@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "hooks/session-init.sh",
+        "timeout": 2
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/model-router-hook.sh",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

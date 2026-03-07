@@ -38,13 +38,19 @@ Two hook scripts run inside Claude Code:
 
 ## Installation
 
-### One-liner
+### Plugin install (recommended)
+
+```bash
+claude plugin install claude-model-router-hook
+```
+
+Hooks are registered automatically. Restart Claude Code to activate.
+
+### One-liner (manual)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh | bash
 ```
-
-Then follow the printed instructions to update `~/.claude/settings.json`.
 
 ### Manual
 
@@ -62,9 +68,7 @@ cp hooks/session-init.sh hooks/model-router-hook.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/session-init.sh ~/.claude/hooks/model-router-hook.sh
 ```
 
-### Update `~/.claude/settings.json`
-
-Add to the `hooks` object (use the full absolute path from `echo $HOME`):
+Then add hooks to `~/.claude/settings.json` (use the full absolute path from `echo $HOME`):
 
 Under `SessionStart`:
 
