@@ -14,6 +14,7 @@
       "author": {
         "name": "tzachbon"
       },
+      "source": "https://github.com/tzachbon/claude-model-router-hook",
       "category": "automation",
       "tags": ["model", "routing", "hooks", "automation", "cost-optimization"]
     }
