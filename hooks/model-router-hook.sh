@@ -1,8 +1,7 @@
 #!/bin/bash
 # Model Router Hook (UserPromptSubmit)
-# Auto-switches settings.json to the recommended model tier and blocks with
-# a minimal "↑ Enter to resend" message. On settings write failure, falls
-# back to a non-blocking advisory.
+# Recommends a model tier based on prompt complexity and blocks with
+# a "/model X" instruction. The user runs the slash command, then resends.
 #
 # Override: prefix prompt with "~" to bypass entirely.
 # Adapted from model-matchmaker (https://github.com/coyvalyss1/model-matchmaker)
@@ -113,7 +112,7 @@ try:
     log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
     snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
     rec = recommendation or "match"
-    action = f"AUTOSWITCH->{new_model}" if block else "ALLOW"
+    action = f"SUGGEST->{new_model}" if block else "ALLOW"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as f:
         f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
@@ -122,16 +121,9 @@ except Exception:
 
 # --- Act ---
 if block and new_model:
-    try:
-        settings["model"] = new_model
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-        print(f"Auto-switched to {new_model} — press ↑ Enter to resend  (~ prefix to keep {model})", file=sys.stderr)
-        sys.exit(2)
-    except Exception:
-        base = new_model.split("[")[0]
-        output = {"systemMessage": f"Model tip: switch to {new_model} for this task. /model {base}"}
-        print(json.dumps(output))
+    base = new_model.split("[")[0]
+    print(f"Run /model {base} then resend  (~ prefix to skip)", file=sys.stderr)
+    sys.exit(2)
 ' 2>"$STDERR_FILE")
 
 EXIT_CODE=$?
