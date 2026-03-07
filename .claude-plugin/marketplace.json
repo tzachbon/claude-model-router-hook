@@ -1,0 +1,22 @@
+{
+  "name": "claude-model-router-hook",
+  "owner": {
+    "name": "tzachbon"
+  },
+  "metadata": {
+    "description": "Automatic model switching for Claude Code based on prompt complexity"
+  },
+  "plugins": [
+    {
+      "name": "claude-model-router-hook",
+      "description": "Automatic model switching for Claude Code based on prompt complexity. No API calls.",
+      "version": "1.0.0",
+      "author": {
+        "name": "tzachbon"
+      },
+      "source": ".",
+      "category": "automation",
+      "tags": ["model", "routing", "hooks", "automation", "cost-optimization"]
+    }
+  ]
+}
