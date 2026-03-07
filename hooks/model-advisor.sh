@@ -1,7 +1,8 @@
 #!/bin/bash
 # Model Advisor Hook (UserPromptSubmit)
-# Auto-switches settings.json to the recommended model tier and injects a
-# systemMessage into the chat announcing the switch.
+# Auto-switches settings.json to the recommended model tier and blocks with
+# a minimal "↑ Enter to resend" message. On settings write failure, falls
+# back to a non-blocking advisory.
 #
 # Override: prefix prompt with "~" to bypass entirely.
 # Adapted from model-matchmaker (https://github.com/coyvalyss1/model-matchmaker)
@@ -11,7 +12,8 @@ INPUT=$(cat)
 LOG_DIR="$HOME/.claude/hooks"
 mkdir -p "$LOG_DIR" 2>/dev/null
 
-echo "$INPUT" | python3 -c '
+STDERR_FILE=$(mktemp)
+STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
 import json, sys, os, re
 from datetime import datetime
 
@@ -91,14 +93,18 @@ else:
         recommendation = None
 
 # --- Determine if mismatch ---
+block = False
 new_model = None
 
 if recommendation == "haiku" and (is_opus or is_sonnet):
+    block = True
     new_model = "haiku"
 elif recommendation == "sonnet" and is_opus:
+    block = True
     suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
     new_model = "sonnet" + (suffix.group(1) if suffix else "")
 elif recommendation == "opus" and (is_sonnet or is_haiku):
+    block = True
     suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
     new_model = "opus" + (suffix.group(1) if suffix else "")
 
@@ -107,7 +113,7 @@ try:
     log_path = os.path.expanduser("~/.claude/hooks/model-advisor.log")
     snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
     rec = recommendation or "match"
-    action = f"AUTOSWITCH->{new_model}" if new_model else "ALLOW"
+    action = f"AUTOSWITCH->{new_model}" if block else "ALLOW"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as f:
         f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
@@ -115,16 +121,30 @@ except Exception:
     pass
 
 # --- Act ---
-if new_model:
+if block and new_model:
     try:
         settings["model"] = new_model
         with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
-        msg = f"[model-advisor] Switched {model} -> {new_model}  (prefix ~ to bypass)"
+        print(f"Auto-switched to {new_model} — press ↑ Enter to resend  (~ prefix to keep {model})", file=sys.stderr)
+        sys.exit(2)
     except Exception:
-        model_base = new_model.split("[")[0]
-        msg = f"[model-advisor] Recommended {new_model} for this task but could not auto-switch. Run /model {model_base}"
-    print(json.dumps({"systemMessage": msg}))
-'
+        base = new_model.split("[")[0]
+        output = {"systemMessage": f"Model tip: switch to {new_model} for this task. /model {base}"}
+        print(json.dumps(output))
+' 2>"$STDERR_FILE")
+
+EXIT_CODE=$?
+STDERR_CONTENT=$(cat "$STDERR_FILE")
+rm -f "$STDERR_FILE"
+
+if [ $EXIT_CODE -eq 2 ]; then
+    echo "$STDERR_CONTENT" >&2
+    exit 2
+fi
+
+if [ -n "$STDOUT_RESULT" ]; then
+    echo "$STDOUT_RESULT"
+fi
 
 exit 0
