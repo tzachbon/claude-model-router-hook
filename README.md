@@ -1,10 +1,16 @@
-# claude-model-advisor
+<div align="center">
 
-**Automatic model switching for Claude Code — no API calls, no config.**
+# Claude Model Advisor
+
+**Automatic model switching for Claude Code. No API calls, no config.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-bash-blue)
+
+<img src="assets/preview.png" width="400" alt="Claude Model Advisor preview" />
+
+</div>
 
 A Claude Code hook system that classifies every prompt by task complexity and switches your active model automatically. Sub-agent model rules are injected into every session so spawned agents also use the right tier.
 
@@ -16,11 +22,11 @@ A Claude Code hook system that classifies every prompt by task complexity and sw
 - Prefix any prompt with `~` to bypass classification and keep the current model
 - Logs every classification and switch to `~/.claude/hooks/model-advisor.log`
 
-## How it works
+## How It Works
 
 Two hook scripts run inside Claude Code:
 
-**`session-init.sh`** (`SessionStart`) — injects a `systemMessage` into every session that enforces these sub-agent rules:
+**`session-init.sh`** (`SessionStart`) injects a `systemMessage` into every session that enforces these sub-agent rules:
 
 | Tier | Use for |
 |------|---------|
@@ -28,7 +34,7 @@ Two hook scripts run inside Claude Code:
 | `sonnet` | Feature work, debugging, writing/editing code, planning |
 | `opus` | Architecture, deep multi-file analysis, complex refactors |
 
-**`model-advisor.sh`** (`UserPromptSubmit`) — classifies the incoming prompt, compares the recommended tier against the current model in `settings.json`, and switches if they do not match. The switch is reflected immediately in the current message.
+**`model-advisor.sh`** (`UserPromptSubmit`) classifies the incoming prompt, compares the recommended tier against the current model in `settings.json`, and switches if they do not match. The switch is reflected immediately in the current message.
 
 ## Installation
 
@@ -113,4 +119,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
