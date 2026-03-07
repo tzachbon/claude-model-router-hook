@@ -1,0 +1,12 @@
+{
+  "name": "claude-model-router-hook",
+  "description": "Automatic model switching for Claude Code based on prompt complexity. No API calls.",
+  "version": "1.1.0",
+  "author": {
+    "name": "tzachbon"
+  },
+  "homepage": "https://github.com/tzachbon/claude-model-router-hook",
+  "repository": "https://github.com/tzachbon/claude-model-router-hook",
+  "license": "MIT",
+  "keywords": ["model", "routing", "hooks", "automation", "cost-optimization"]
+}
