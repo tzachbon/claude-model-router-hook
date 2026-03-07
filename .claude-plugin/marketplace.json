@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-model-router-hook",
   "owner": {
     "name": "tzachbon"
@@ -14,7 +15,10 @@
       "author": {
         "name": "tzachbon"
       },
-      "source": "https://github.com/tzachbon/claude-model-router-hook",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/tzachbon/claude-model-router-hook.git"
+      },
       "category": "automation",
       "tags": ["model", "routing", "hooks", "automation", "cost-optimization"]
     }
