@@ -14,7 +14,6 @@
       "author": {
         "name": "tzachbon"
       },
-      "source": ".",
       "category": "automation",
       "tags": ["model", "routing", "hooks", "automation", "cost-optimization"]
     }
