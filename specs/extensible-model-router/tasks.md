@@ -108,7 +108,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-5, FR-1_
   - _Design: Component 5 - Classification Engine_
 
-- [ ] 1.10 [VERIFY] Quality checkpoint: full classification pipeline
+- [x] 1.10 [VERIFY] Quality checkpoint: full classification pipeline
   - **Do**: Test all classification modes with config
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && echo '{"prompt":"architect the system","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "opus" && echo '{"prompt":"hello","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh; test $? -eq 0 && echo PASS`
   - **Done when**: Classification works with built-in and custom keywords/patterns
