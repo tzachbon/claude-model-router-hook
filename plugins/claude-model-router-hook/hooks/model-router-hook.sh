@@ -95,32 +95,78 @@ if not (is_opus or is_sonnet or is_haiku):
 prompt_lower = prompt.lower()
 word_count = len(prompt.split())
 
-# --- Classify ---
-opus_keywords = [
-    "architect", "architecture", "evaluate", "tradeoff", "trade-off",
-    "strategy", "strategic", "compare approaches", "why does", "deep dive",
-    "redesign", "across the codebase", "investor", "multi-system",
-    "complex refactor", "analyze", "analysis", "plan mode", "rethink",
-    "high-stakes", "critical decision"
-]
-haiku_patterns = [
-    r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
-    r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
-    r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
-    r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
-    r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
-    r"\bupdate\s+(version|package)\b"
-]
-sonnet_patterns = [
-    r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b", r"\bdebug\b",
-    r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
-    r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
-    r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
-]
+# --- Config Assembly ---
+try:
+    builtin = {
+        "classifier": "keywords",
+        "default_model": "sonnet",
+        "keywords": {
+            "opus": [
+                "architect", "architecture", "evaluate", "tradeoff", "trade-off",
+                "strategy", "strategic", "compare approaches", "why does", "deep dive",
+                "redesign", "across the codebase", "investor", "multi-system",
+                "complex refactor", "analyze", "analysis", "plan mode", "rethink",
+                "high-stakes", "critical decision"
+            ],
+            "sonnet": [],
+            "haiku": []
+        },
+        "patterns": {
+            "opus": [],
+            "sonnet": [
+                r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b", r"\bdebug\b",
+                r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
+                r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
+                r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
+            ],
+            "haiku": [
+                r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
+                r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
+                r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
+                r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
+                r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
+                r"\bupdate\s+(version|package)\b"
+            ]
+        }
+    }
+    cfg = dict(builtin)
+    cfg = merge_config(cfg, load_config("~/.claude/model-router-config.json"))
 
+    project_root = None
+    try:
+        project_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        pass
+
+    if project_root:
+        cfg = merge_config(cfg, load_config(
+            os.path.join(project_root, ".claude", "model-router-config.json")
+        ))
+
+    env_classifier = os.environ.get("CLAUDE_ROUTER_CLASSIFIER", "")
+    if env_classifier in ("keywords", "ai", "hybrid"):
+        cfg["classifier"] = env_classifier
+
+    env_extra = os.environ.get("CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS", "")
+    if env_extra:
+        extras = [k.strip() for k in env_extra.split(",") if k.strip()]
+        cfg["keywords"]["opus"] = list(dict.fromkeys(
+            cfg["keywords"].get("opus", []) + extras
+        ))
+except Exception:
+    cfg = builtin
+
+# --- Classify ---
 if force_model in ("opus", "sonnet", "haiku"):
     recommendation = force_model
 else:
+    opus_keywords = cfg["keywords"].get("opus", [])
+    haiku_patterns = cfg["patterns"].get("haiku", [])
+    sonnet_patterns = cfg["patterns"].get("sonnet", [])
+
     has_opus_signal = any(kw in prompt_lower for kw in opus_keywords)
     if has_opus_signal or (word_count > 100 and "?" in prompt) or word_count > 200:
         recommendation = "opus"

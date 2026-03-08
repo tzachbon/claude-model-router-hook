@@ -61,7 +61,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-1, US-2, US-3, FR-2, FR-3_
   - _Design: Components 2, 3_
 
-- [ ] 1.6 Add config assembly pipeline
+- [x] 1.6 Add config assembly pipeline
   - **Do**:
     1. After the functions but before classification, add config assembly:
        - Define `builtin` dict with current hardcoded keywords/patterns as defaults, `classifier: "keywords"`, `default_model: "sonnet"`
