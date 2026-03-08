@@ -175,7 +175,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: FR-8_
   - _Design: Existing Patterns to Follow_
 
-- [ ] 1.16 POC Checkpoint
+- [x] 1.16 POC Checkpoint
   - **Do**: Verify all features work end-to-end with automated checks:
     1. Symlinks resolve
     2. Timeout bumped
