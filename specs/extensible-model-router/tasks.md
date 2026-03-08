@@ -190,7 +190,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
 
 ## Phase 2: Refactoring
 
-- [ ] 2.1 Extract classify_keywords into clean function
+- [x] 2.1 Extract classify_keywords into clean function
   - **Do**:
     1. Ensure `classify_keywords(prompt_lower, word_count, cfg)` is a clean standalone function
     2. All keyword/pattern lists come from `cfg` parameter, no globals
