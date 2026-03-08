@@ -152,4 +152,43 @@ assert_exit "non-dict JSON falls back to defaults" '{"prompt":"hello"}' 0
 export HOME="$ORIG_HOME"
 rm -rf "$TMPD"
 
+# ============================
+# Config Merging Tests
+# ============================
+echo "--- Config Merging Tests ---"
+
+# Global config only - custom keyword from global triggers tier
+setup_config '{"keywords":{"opus":["globalword"]}}'
+assert_exit "global config keyword triggers opus" '{"prompt":"globalword please"}' 2
+cleanup
+
+# Project config only - custom keyword from project config triggers tier
+# Create a temp git repo with project config
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+PROJ=$(mktemp -d)
+(cd "$PROJ" && git init -q && mkdir -p .claude && echo '{"keywords":{"opus":["projword"]}}' > .claude/model-router-config.json)
+export HOME="$TMPD"
+# Run from the project dir so git rev-parse finds it
+(cd "$PROJ" && echo '{"prompt":"projword please"}' | bash "$HOOK" >/dev/null 2>/dev/null); PROJ_EXIT=$?
+if [ "$PROJ_EXIT" -eq 2 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: project config keyword triggers opus (expected 2, got $PROJ_EXIT)"; fi
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD" "$PROJ"
+
+# Arrays merged additively - global has "foo", project has "bar", both trigger
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+echo '{"keywords":{"opus":["mergefoo"]}}' > "$TMPD/.claude/model-router-config.json"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+PROJ=$(mktemp -d)
+(cd "$PROJ" && git init -q && mkdir -p .claude && echo '{"keywords":{"opus":["mergebar"]}}' > .claude/model-router-config.json)
+export HOME="$TMPD"
+(cd "$PROJ" && echo '{"prompt":"mergefoo please"}' | bash "$HOOK" >/dev/null 2>/dev/null); FOO_EXIT=$?
+(cd "$PROJ" && echo '{"prompt":"mergebar please"}' | bash "$HOOK" >/dev/null 2>/dev/null); BAR_EXIT=$?
+if [ "$FOO_EXIT" -eq 2 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: merged array foo triggers opus (expected 2, got $FOO_EXIT)"; fi
+if [ "$BAR_EXIT" -eq 2 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: merged array bar triggers opus (expected 2, got $BAR_EXIT)"; fi
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD" "$PROJ"
+
 print_summary

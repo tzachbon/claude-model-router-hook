@@ -274,7 +274,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Done when**: All tests pass with exit 0
   - **Commit**: `chore(router): pass test suite checkpoint` (if fixes needed)
 
-- [ ] 3.5 Add config merging tests
+- [x] 3.5 Add config merging tests
   - **Do**:
     1. Test global config only: custom keyword from global config triggers tier
     2. Test project config only: custom keyword from project config triggers tier (create temp git repo)
