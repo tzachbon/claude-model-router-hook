@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/model-router-hook.sh",
-            "timeout": 2
+            "timeout": 10
           }
         ]
       }

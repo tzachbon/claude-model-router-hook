@@ -16,7 +16,7 @@ Focus: Get config loading, merging, ENV overrides, AI classification, and symlin
   - _Requirements: FR-7_
   - _Design: Symlink Details_
 
-- [ ] 1.2 Bump timeout in both hooks.json files
+- [x] 1.2 Bump timeout in both hooks.json files
   - **Do**:
     1. In `hooks/hooks.json`, change UserPromptSubmit timeout from 2 to 10
     2. In `plugins/claude-model-router-hook/hooks/hooks.json`, change UserPromptSubmit timeout from 2 to 10
