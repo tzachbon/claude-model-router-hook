@@ -13,7 +13,7 @@ mkdir -p "$LOG_DIR" 2>/dev/null
 
 STDERR_FILE=$(mktemp)
 STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
-import json, sys, os, re
+import json, sys, os, re, subprocess
 from datetime import datetime
 
 try:
@@ -34,6 +34,12 @@ if prompt.lstrip().startswith("~"):
     except Exception:
         pass
     sys.exit(0)
+
+# ENV early exits
+if os.environ.get("CLAUDE_ROUTER_DISABLED", "") == "1":
+    sys.exit(0)
+
+force_model = os.environ.get("CLAUDE_ROUTER_FORCE_MODEL", "").lower()
 
 # Detect model from settings.json
 model = ""
@@ -79,17 +85,20 @@ sonnet_patterns = [
     r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
 ]
 
-has_opus_signal = any(kw in prompt_lower for kw in opus_keywords)
-if has_opus_signal or (word_count > 100 and "?" in prompt) or word_count > 200:
-    recommendation = "opus"
+if force_model in ("opus", "sonnet", "haiku"):
+    recommendation = force_model
 else:
-    is_haiku_task = word_count < 60 and any(re.search(p, prompt_lower) for p in haiku_patterns)
-    if is_haiku_task:
-        recommendation = "haiku"
-    elif any(re.search(p, prompt_lower) for p in sonnet_patterns):
-        recommendation = "sonnet"
+    has_opus_signal = any(kw in prompt_lower for kw in opus_keywords)
+    if has_opus_signal or (word_count > 100 and "?" in prompt) or word_count > 200:
+        recommendation = "opus"
     else:
-        recommendation = None
+        is_haiku_task = word_count < 60 and any(re.search(p, prompt_lower) for p in haiku_patterns)
+        if is_haiku_task:
+            recommendation = "haiku"
+        elif any(re.search(p, prompt_lower) for p in sonnet_patterns):
+            recommendation = "sonnet"
+        else:
+            recommendation = None
 
 # --- Determine if mismatch ---
 block = False

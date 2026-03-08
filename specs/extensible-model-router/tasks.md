@@ -27,7 +27,7 @@ Focus: Get config loading, merging, ENV overrides, AI classification, and symlin
   - _Requirements: FR-6_
   - _Design: File Structure_
 
-- [ ] 1.3 Add ENV early exits (DISABLED and FORCE_MODEL)
+- [x] 1.3 Add ENV early exits (DISABLED and FORCE_MODEL)
   - **Do**:
     1. In `plugins/claude-model-router-hook/hooks/model-router-hook.sh`, add `import subprocess` to the import line
     2. After prompt extraction and `~` bypass check, before model detection, add ENV early exit logic:
