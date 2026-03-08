@@ -324,20 +324,20 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Done when**: Tests pass, symlinks correct, timeout bumped
   - **Commit**: `fix(router): address issues from local verification` (if fixes needed)
 
-- [ ] V4 [VERIFY] Full local CI: bash tests/test-model-router.sh
+- [x] V4 [VERIFY] Full local CI: bash tests/test-model-router.sh
   - **Do**: Run complete test suite as final gate
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && bash tests/test-model-router.sh && echo V4_PASS`
   - **Done when**: All tests pass
   - **Commit**: None
 
-- [ ] V5 [VERIFY] Backward compatibility final check
+- [x] V5 [VERIFY] Backward compatibility final check
   - **Do**: Verify no-config behavior matches original hook behavior exactly
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && echo '{"prompt":"architect the system","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "opus" && echo '{"prompt":"git commit all changes","model":"opus"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "haiku" && echo '{"prompt":"build the feature","model":"opus"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "sonnet" && echo '{"prompt":"hello","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh; test $? -eq 0 && echo '{"prompt":"~ architect","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh; test $? -eq 0 && echo V5_PASS`
   - **Done when**: All backward compat scenarios pass
   - **Commit**: None
   - _Requirements: US-10_
 
-- [ ] V6 [VERIFY] AC checklist
+- [x] V6 [VERIFY] AC checklist
   - **Do**: Programmatically verify each acceptance criteria:
     1. AC US-1: Config file loaded from `~/.claude/model-router-config.json` (grep code for path)
     2. AC US-2: Project config via git rev-parse (grep code for git rev-parse)
