@@ -225,7 +225,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
 
 ## Phase 3: Testing
 
-- [ ] 3.1 Create test script skeleton
+- [x] 3.1 Create test script skeleton
   - **Do**:
     1. Create `tests/test-model-router.sh`
     2. Add shebang, PASS/FAIL counters, HOOK path variable
