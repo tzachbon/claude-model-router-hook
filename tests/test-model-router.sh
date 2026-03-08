@@ -34,33 +34,32 @@ assert_stderr_contains() {
 
 setup_config() {
     local config_content="$1"
-    local tmpdir=$(mktemp -d)
-    mkdir -p "$tmpdir/.claude/hooks"
+    TMPD=$(mktemp -d)
+    mkdir -p "$TMPD/.claude/hooks"
     if [ -n "$config_content" ]; then
-        echo "$config_content" > "$tmpdir/.claude/model-router-config.json"
+        echo "$config_content" > "$TMPD/.claude/model-router-config.json"
     fi
-    echo '{"model":"sonnet"}' > "$tmpdir/.claude/settings.json"
-    export HOME="$tmpdir"
-    echo "$tmpdir"
+    echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+    export HOME="$TMPD"
 }
 
 setup_config_with_model() {
     local config_content="$1"
     local model="$2"
-    local tmpdir=$(mktemp -d)
-    mkdir -p "$tmpdir/.claude/hooks"
+    TMPD=$(mktemp -d)
+    mkdir -p "$TMPD/.claude/hooks"
     if [ -n "$config_content" ]; then
-        echo "$config_content" > "$tmpdir/.claude/model-router-config.json"
+        echo "$config_content" > "$TMPD/.claude/model-router-config.json"
     fi
-    echo "{\"model\":\"$model\"}" > "$tmpdir/.claude/settings.json"
-    export HOME="$tmpdir"
-    echo "$tmpdir"
+    echo "{\"model\":\"$model\"}" > "$TMPD/.claude/settings.json"
+    export HOME="$TMPD"
 }
 
 cleanup() {
     export HOME="$ORIG_HOME"
-    if [ -n "$1" ] && [ -d "$1" ]; then
-        rm -rf "$1"
+    if [ -n "$TMPD" ] && [ -d "$TMPD" ]; then
+        rm -rf "$TMPD"
+        TMPD=""
     fi
 }
 
@@ -75,5 +74,44 @@ print_summary() {
     fi
     exit 0
 }
+
+# ============================
+# Classification Tests
+# ============================
+echo "--- Classification Tests ---"
+
+# Opus keyword triggers opus (on sonnet model -> mismatch -> block)
+setup_config ""
+assert_exit "opus keyword triggers block on sonnet" '{"prompt":"architect the system"}' 2
+assert_stderr_contains "opus keyword stderr mentions opus" '{"prompt":"architect the system"}' "opus"
+cleanup
+
+# Sonnet pattern triggers sonnet (on opus model -> mismatch -> block)
+setup_config_with_model "" "opus"
+assert_exit "sonnet pattern triggers block on opus" '{"prompt":"build the feature"}' 2
+assert_stderr_contains "sonnet pattern stderr mentions sonnet" '{"prompt":"build the feature"}' "sonnet"
+cleanup
+
+# Haiku pattern triggers haiku (on opus model -> mismatch -> block)
+setup_config_with_model "" "opus"
+assert_exit "haiku pattern triggers block on opus" '{"prompt":"git commit all changes"}' 2
+assert_stderr_contains "haiku pattern stderr mentions haiku" '{"prompt":"git commit all changes"}' "haiku"
+cleanup
+
+# No match allows through
+setup_config ""
+assert_exit "no match allows through" '{"prompt":"hello"}' 0
+cleanup
+
+# Tilde prefix bypasses
+setup_config ""
+assert_exit "tilde bypasses classification" '{"prompt":"~ architect it"}' 0
+cleanup
+
+# Long prompt (>200 words) triggers opus
+setup_config ""
+LONG_PROMPT=$(python3 -c "print(' '.join(['word'] * 210))")
+assert_exit "long prompt triggers opus" "{\"prompt\":\"$LONG_PROMPT\"}" 2
+cleanup
 
 print_summary

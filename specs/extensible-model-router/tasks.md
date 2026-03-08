@@ -242,7 +242,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-9_
   - _Design: Test Strategy_
 
-- [ ] 3.2 Add classification tests
+- [x] 3.2 Add classification tests
   - **Do**:
     1. Test opus keyword triggers opus: `{"prompt":"architect the system","model":"sonnet"}` -> exit 2, stderr mentions opus
     2. Test sonnet pattern triggers sonnet: `{"prompt":"build the feature","model":"opus"}` -> exit 2, stderr mentions sonnet
