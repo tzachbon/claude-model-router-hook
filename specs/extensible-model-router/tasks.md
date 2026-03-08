@@ -162,7 +162,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Done when**: DISABLED exits 0, opus keyword blocks on sonnet, neutral prompt allows
   - **Commit**: `chore(router): pass full feature checkpoint` (if fixes needed)
 
-- [ ] 1.15 Add config loading and AI classification log entries
+- [x] 1.15 Add config loading and AI classification log entries
   - **Do**:
     1. Add log entry when config is loaded (debug level, only to log file): source path and whether it was found
     2. Add log entry when AI classification is invoked: classifier mode, prompt snippet

@@ -16,16 +16,29 @@ STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
 import json, sys, os, re, subprocess
 from datetime import datetime
 
+def _log_debug(msg):
+    try:
+        log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_path, "a") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
 def load_config(path):
     try:
         with open(os.path.expanduser(path), "r") as f:
             cfg = json.load(f)
         if not isinstance(cfg, dict):
+            _log_debug(f"config path={path} status=non_dict_ignored")
             return {}
+        _log_debug(f"config path={path} status=loaded")
         return cfg
     except FileNotFoundError:
+        _log_debug(f"config path={path} status=not_found")
         return {}
     except Exception as e:
+        _log_debug(f"config path={path} status=error error=\"{e}\"")
         print(f"model-router: warning: bad config {path}: {e}", file=sys.stderr)
         return {}
 
