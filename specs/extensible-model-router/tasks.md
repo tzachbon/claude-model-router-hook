@@ -204,7 +204,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Commit**: `refactor(router): clean up classify_keywords function`
   - _Design: Component 5_
 
-- [ ] 2.2 Add error handling for edge cases
+- [x] 2.2 Add error handling for edge cases
   - **Do**:
     1. Ensure `load_config` handles: non-dict JSON root (returns `{}`), permission errors, encoding issues
     2. Ensure `merge_config` handles: missing sections gracefully, non-list values in keyword/pattern arrays

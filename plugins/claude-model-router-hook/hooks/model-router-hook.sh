@@ -50,6 +50,10 @@ def merge_config(base, override):
     for section in ("keywords", "patterns"):
         base_sec = result.get(section, {})
         over_sec = override.get(section, {})
+        if not isinstance(base_sec, dict):
+            base_sec = {}
+        if not isinstance(over_sec, dict):
+            over_sec = {}
         merged_sec = dict(base_sec)
         for tier in ("opus", "sonnet", "haiku"):
             base_list = base_sec.get(tier, [])
@@ -315,8 +319,11 @@ EXIT_CODE=$?
 STDERR_CONTENT=$(cat "$STDERR_FILE")
 rm -f "$STDERR_FILE"
 
-if [ $EXIT_CODE -eq 2 ]; then
+if [ -n "$STDERR_CONTENT" ]; then
     echo "$STDERR_CONTENT" >&2
+fi
+
+if [ $EXIT_CODE -eq 2 ]; then
     exit 2
 fi
 
