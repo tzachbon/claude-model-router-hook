@@ -156,7 +156,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-8, FR-4_
   - _Design: Component 5 - Main classification dispatcher_
 
-- [ ] 1.14 [VERIFY] Quality checkpoint: full feature verification
+- [x] 1.14 [VERIFY] Quality checkpoint: full feature verification
   - **Do**: Run comprehensive tests covering all new features
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && CLAUDE_ROUTER_DISABLED=1 echo '{"prompt":"test","model":"opus"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh; E1=$?; echo '{"prompt":"architect the system","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>/dev/null; E2=$?; echo '{"prompt":"hello","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh; E3=$?; test $E1 -eq 0 && test $E2 -eq 2 && test $E3 -eq 0 && echo PASS`
   - **Done when**: DISABLED exits 0, opus keyword blocks on sonnet, neutral prompt allows
