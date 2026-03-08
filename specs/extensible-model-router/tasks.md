@@ -114,7 +114,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Done when**: Classification works with built-in and custom keywords/patterns
   - **Commit**: `chore(router): pass classification pipeline checkpoint` (if fixes needed)
 
-- [ ] 1.11 Add ENV override for extra opus keywords and classifier mode
+- [x] 1.11 Add ENV override for extra opus keywords and classifier mode
   - **Do**:
     1. Verify `CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS=kw1,kw2` adds comma-separated keywords to opus tier (should already be in config assembly from task 1.6)
     2. Verify `CLAUDE_ROUTER_CLASSIFIER=keywords|ai|hybrid` overrides classifier mode
