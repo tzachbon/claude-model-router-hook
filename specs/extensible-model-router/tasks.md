@@ -310,7 +310,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Commit**: `test(router): add ENV override test cases`
   - _Requirements: US-6, US-9_
 
-- [ ] 3.8 [VERIFY] Quality checkpoint: complete test suite
+- [x] 3.8 [VERIFY] Quality checkpoint: complete test suite
   - **Do**: Run full test suite, verify all pass, check test count
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && bash tests/test-model-router.sh; test $? -eq 0 && echo PASS`
   - **Done when**: All tests pass, exit 0, test count >= 15
