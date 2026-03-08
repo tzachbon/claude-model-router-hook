@@ -1,2 +1,5 @@
 .claude/worktrees/
 .claude-plugin/
+specs/.current-spec
+specs/.current-epic
+**/.progress.md
