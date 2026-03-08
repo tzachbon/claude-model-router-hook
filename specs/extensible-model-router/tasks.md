@@ -126,7 +126,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-6_
   - _Design: Component 4 - Config Assembly_
 
-- [ ] 1.12 Add AI classification function
+- [x] 1.12 Add AI classification function
   - **Do**:
     1. Add `classify_ai(prompt)` function in the Python block
     2. Uses `subprocess.run(["timeout", "8s", "claude", "-p", "--model", "haiku", "--max-turns", "1", classification_prompt])`

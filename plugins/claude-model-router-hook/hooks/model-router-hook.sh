@@ -205,6 +205,50 @@ def classify_keywords(prompt_lower, word_count, cfg):
 
     return None
 
+def classify_ai(prompt):
+    try:
+        log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        snippet = prompt[:30].replace("\n", " ")
+        with open(log_path, "a") as f:
+            f.write(f"[{ts}] AI_CLASSIFY_START prompt=\"{snippet}...\"\n")
+    except Exception:
+        pass
+    classification_prompt = (
+        "Based on the following user prompt, classify which AI model tier should handle it. "
+        "Reply with exactly one word: opus, sonnet, or haiku.\n\n"
+        "- opus: complex reasoning, architecture, debugging hard problems, multi-file refactoring\n"
+        "- sonnet: moderate tasks, code generation, explanations, standard development\n"
+        "- haiku: simple questions, typo fixes, formatting, one-line changes, quick lookups\n\n"
+        f"User prompt: {prompt[:500]}"
+    )
+    try:
+        result = subprocess.run(
+            ["timeout", "8s", "claude", "-p", "--model", "haiku", "--max-turns", "1",
+             classification_prompt],
+            capture_output=True, text=True, timeout=10
+        )
+        answer = result.stdout.strip().lower()
+        if answer in ("opus", "sonnet", "haiku"):
+            try:
+                with open(log_path, "a") as f:
+                    f.write(f"[{ts}] AI_CLASSIFY_RESULT answer={answer}\n")
+            except Exception:
+                pass
+            return answer
+        try:
+            with open(log_path, "a") as f:
+                f.write(f"[{ts}] AI_CLASSIFY_INVALID answer=\"{answer[:50]}\"\n")
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            with open(log_path, "a") as f:
+                f.write(f"[{ts}] AI_CLASSIFY_ERROR error=\"{str(e)[:100]}\"\n")
+        except Exception:
+            pass
+    return "sonnet"
+
 # --- Classify ---
 if force_model in ("opus", "sonnet", "haiku"):
     recommendation = force_model
