@@ -229,4 +229,45 @@ assert_exit "invalid regex does not crash" '{"prompt":"hello"}' 0
 export HOME="$ORIG_HOME"
 rm -rf "$TMPD"
 
+# ============================
+# ENV Override Tests
+# ============================
+echo "--- ENV Override Tests ---"
+
+# CLAUDE_ROUTER_DISABLED=1 exits immediately
+setup_config ""
+CLAUDE_ROUTER_DISABLED=1 assert_exit "DISABLED exits immediately" '{"prompt":"architect the system"}' 0
+unset CLAUDE_ROUTER_DISABLED
+cleanup
+
+# CLAUDE_ROUTER_FORCE_MODEL=haiku bypasses classification
+setup_config ""
+# FORCE_MODEL=haiku on sonnet model: forces haiku recommendation, mismatch with sonnet -> block
+export CLAUDE_ROUTER_FORCE_MODEL=haiku
+assert_exit "FORCE_MODEL=haiku on sonnet blocks" '{"prompt":"architect the system"}' 2
+assert_stderr_contains "FORCE_MODEL=haiku stderr mentions haiku" '{"prompt":"architect the system"}' "haiku"
+unset CLAUDE_ROUTER_FORCE_MODEL
+# Force haiku on opus model should block with haiku recommendation
+setup_config_with_model "" "opus"
+export CLAUDE_ROUTER_FORCE_MODEL=haiku
+assert_exit "FORCE_MODEL=haiku on opus model blocks" '{"prompt":"anything"}' 2
+assert_stderr_contains "FORCE_MODEL stderr mentions haiku" '{"prompt":"anything"}' "haiku"
+unset CLAUDE_ROUTER_FORCE_MODEL
+cleanup
+
+# CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS
+setup_config ""
+export CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS=myenvword
+assert_exit "EXTRA_OPUS_KEYWORDS triggers opus" '{"prompt":"myenvword please"}' 2
+assert_stderr_contains "EXTRA_OPUS_KEYWORDS stderr mentions opus" '{"prompt":"myenvword please"}' "opus"
+unset CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS
+cleanup
+
+# CLAUDE_ROUTER_CLASSIFIER=keywords uses keyword matching
+setup_config ""
+export CLAUDE_ROUTER_CLASSIFIER=keywords
+assert_exit "CLASSIFIER=keywords works with opus keyword" '{"prompt":"architect the system"}' 2
+unset CLAUDE_ROUTER_CLASSIFIER
+cleanup
+
 print_summary

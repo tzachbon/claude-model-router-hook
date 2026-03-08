@@ -298,7 +298,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Commit**: `test(router): add custom keywords and patterns test cases`
   - _Requirements: US-4, US-5, US-9_
 
-- [ ] 3.7 Add ENV override tests
+- [x] 3.7 Add ENV override tests
   - **Do**:
     1. Test `CLAUDE_ROUTER_DISABLED=1` exits immediately: any prompt -> exit 0
     2. Test `CLAUDE_ROUTER_FORCE_MODEL=haiku` bypasses classification: opus prompt -> recommends haiku
