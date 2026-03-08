@@ -16,6 +16,39 @@ STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
 import json, sys, os, re, subprocess
 from datetime import datetime
 
+def load_config(path):
+    try:
+        with open(os.path.expanduser(path), "r") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict):
+            return {}
+        return cfg
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        print(f"model-router: warning: bad config {path}: {e}", file=sys.stderr)
+        return {}
+
+def merge_config(base, override):
+    result = dict(base)
+    for key in ("classifier", "default_model"):
+        if key in override:
+            result[key] = override[key]
+    for section in ("keywords", "patterns"):
+        base_sec = result.get(section, {})
+        over_sec = override.get(section, {})
+        merged_sec = dict(base_sec)
+        for tier in ("opus", "sonnet", "haiku"):
+            base_list = base_sec.get(tier, [])
+            over_list = over_sec.get(tier, [])
+            if not isinstance(base_list, list):
+                base_list = []
+            if not isinstance(over_list, list):
+                over_list = []
+            merged_sec[tier] = list(dict.fromkeys(base_list + over_list))
+        result[section] = merged_sec
+    return result
+
 try:
     data = json.load(sys.stdin)
 except Exception:

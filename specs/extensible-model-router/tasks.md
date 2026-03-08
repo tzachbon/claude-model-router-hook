@@ -47,7 +47,7 @@ Focus: Get config loading, merging, ENV overrides, AI classification, and symlin
   - **Done when**: Opus keyword still triggers block on sonnet model, neutral prompt still allows
   - **Commit**: `chore(router): pass quality checkpoint` (if fixes needed)
 
-- [ ] 1.5 Add load_config and merge_config functions
+- [x] 1.5 Add load_config and merge_config functions
   - **Do**:
     1. Add `load_config(path)` function in the Python block, after imports. Reads JSON from path, returns dict. FileNotFoundError returns `{}` silently. Other exceptions print warning to stderr and return `{}`
     2. Add `merge_config(base, override)` function. Scalars (`classifier`, `default_model`) are last-write-wins. Arrays in `keywords` and `patterns` sections are union with dedup (using `dict.fromkeys`)
