@@ -318,7 +318,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
 
 ## Phase 4: Quality Gates
 
-- [ ] 4.1 [VERIFY] Full local verification
+- [x] 4.1 [VERIFY] Full local verification
   - **Do**: Run complete test suite and backward compatibility checks
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && bash tests/test-model-router.sh && readlink hooks/model-router-hook.sh | grep -q "plugins" && python3 -c "import json; assert json.load(open('hooks/hooks.json'))['hooks']['UserPromptSubmit'][0]['hooks'][0]['timeout']==10" && echo "ALL_PASS"`
   - **Done when**: Tests pass, symlinks correct, timeout bumped
