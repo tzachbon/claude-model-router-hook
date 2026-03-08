@@ -83,7 +83,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Done when**: All four classification scenarios produce same results as before
   - **Commit**: `chore(router): pass backward compatibility checkpoint` (if fixes needed)
 
-- [ ] 1.8 Add custom keywords support via config
+- [x] 1.8 Add custom keywords support via config
   - **Do**:
     1. Verify config assembly already merges `keywords.opus`, `keywords.sonnet`, `keywords.haiku` from config files into the built-in lists
     2. Test by creating a temp global config with a custom opus keyword and verifying it triggers opus classification
