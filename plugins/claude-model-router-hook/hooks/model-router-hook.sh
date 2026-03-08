@@ -159,25 +159,57 @@ try:
 except Exception:
     cfg = builtin
 
+def classify_keywords(prompt_lower, word_count, cfg):
+    opus_kw = cfg["keywords"].get("opus", [])
+    opus_pat = cfg["patterns"].get("opus", [])
+    has_opus_signal = any(kw in prompt_lower for kw in opus_kw)
+    if not has_opus_signal:
+        for p in opus_pat:
+            try:
+                if re.search(p, prompt_lower):
+                    has_opus_signal = True
+                    break
+            except re.error:
+                pass
+    if has_opus_signal or (word_count > 100 and "?" in prompt_lower) or word_count > 200:
+        return "opus"
+
+    haiku_kw = cfg["keywords"].get("haiku", [])
+    haiku_pat = cfg["patterns"].get("haiku", [])
+    if word_count < 60:
+        haiku_match = any(kw in prompt_lower for kw in haiku_kw)
+        if not haiku_match:
+            for p in haiku_pat:
+                try:
+                    if re.search(p, prompt_lower):
+                        haiku_match = True
+                        break
+                except re.error:
+                    pass
+        if haiku_match:
+            return "haiku"
+
+    sonnet_kw = cfg["keywords"].get("sonnet", [])
+    sonnet_pat = cfg["patterns"].get("sonnet", [])
+    sonnet_match = any(kw in prompt_lower for kw in sonnet_kw)
+    if not sonnet_match:
+        for p in sonnet_pat:
+            try:
+                if re.search(p, prompt_lower):
+                    sonnet_match = True
+                    break
+            except re.error:
+                pass
+    if sonnet_match:
+        return "sonnet"
+
+    return None
+
 # --- Classify ---
 if force_model in ("opus", "sonnet", "haiku"):
     recommendation = force_model
 else:
-    opus_keywords = cfg["keywords"].get("opus", [])
-    haiku_patterns = cfg["patterns"].get("haiku", [])
-    sonnet_patterns = cfg["patterns"].get("sonnet", [])
-
-    has_opus_signal = any(kw in prompt_lower for kw in opus_keywords)
-    if has_opus_signal or (word_count > 100 and "?" in prompt) or word_count > 200:
-        recommendation = "opus"
-    else:
-        is_haiku_task = word_count < 60 and any(re.search(p, prompt_lower) for p in haiku_patterns)
-        if is_haiku_task:
-            recommendation = "haiku"
-        elif any(re.search(p, prompt_lower) for p in sonnet_patterns):
-            recommendation = "sonnet"
-        else:
-            recommendation = None
+    recommendation = classify_keywords(prompt_lower, word_count, cfg)
 
 # --- Determine if mismatch ---
 block = False

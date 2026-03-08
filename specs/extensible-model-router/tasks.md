@@ -94,7 +94,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-4, FR-3_
   - _Design: Component 5 - Classification Engine_
 
-- [ ] 1.9 Add custom regex patterns support and opus pattern matching
+- [x] 1.9 Add custom regex patterns support and opus pattern matching
   - **Do**:
     1. Refactor classification to use `classify_keywords(prompt_lower, word_count, cfg)` function that checks keywords AND patterns for all tiers (opus currently only checks keywords, add pattern support)
     2. For opus: check `cfg["keywords"]["opus"]` then `cfg["patterns"]["opus"]`, then length heuristics
