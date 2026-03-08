@@ -253,7 +253,15 @@ def classify_ai(prompt):
 if force_model in ("opus", "sonnet", "haiku"):
     recommendation = force_model
 else:
-    recommendation = classify_keywords(prompt_lower, word_count, cfg)
+    classifier_mode = cfg.get("classifier", "keywords")
+    if classifier_mode == "ai":
+        recommendation = classify_ai(prompt)
+    elif classifier_mode == "hybrid":
+        recommendation = classify_keywords(prompt_lower, word_count, cfg)
+        if recommendation is None:
+            recommendation = classify_ai(prompt)
+    else:
+        recommendation = classify_keywords(prompt_lower, word_count, cfg)
 
 # --- Determine if mismatch ---
 block = False

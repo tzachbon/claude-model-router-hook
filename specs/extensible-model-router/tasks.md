@@ -141,7 +141,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-7, FR-5_
   - _Design: Component 5 - classify_ai_
 
-- [ ] 1.13 Add classifier mode dispatcher
+- [x] 1.13 Add classifier mode dispatcher
   - **Do**:
     1. Replace direct classification call with mode dispatcher:
        - `keywords`: call `classify_keywords()` only (current behavior)
