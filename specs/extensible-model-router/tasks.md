@@ -286,7 +286,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Commit**: `test(router): add config merging test cases`
   - _Requirements: US-3, US-9_
 
-- [ ] 3.6 Add custom keywords and patterns tests
+- [x] 3.6 Add custom keywords and patterns tests
   - **Do**:
     1. Test custom keyword triggers tier: config adds "foobar" to opus keywords, prompt with "foobar" -> opus
     2. Test custom regex pattern triggers tier: config adds `\\bxyz\\d+` to opus patterns, prompt with "xyz123" -> opus

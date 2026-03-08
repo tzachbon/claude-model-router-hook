@@ -191,4 +191,42 @@ if [ "$BAR_EXIT" -eq 2 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FA
 export HOME="$ORIG_HOME"
 rm -rf "$TMPD" "$PROJ"
 
+# ============================
+# Custom Keywords and Patterns Tests
+# ============================
+echo "--- Custom Keywords/Patterns Tests ---"
+
+# Custom keyword triggers tier
+setup_config '{"keywords":{"opus":["foobar"]}}'
+assert_exit "custom keyword foobar triggers opus" '{"prompt":"foobar please"}' 2
+assert_stderr_contains "custom keyword stderr mentions opus" '{"prompt":"foobar please"}' "opus"
+cleanup
+
+# Custom regex pattern triggers tier
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+python3 -c "import json; json.dump({'patterns':{'opus':[r'\bxyz\d+']}}, open('$TMPD/.claude/model-router-config.json','w'))"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+export HOME="$TMPD"
+assert_exit "custom regex pattern triggers opus" '{"prompt":"handle xyz123 now"}' 2
+assert_stderr_contains "custom regex stderr mentions opus" '{"prompt":"handle xyz123 now"}' "opus"
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD"
+
+# Custom haiku keyword (short prompt)
+setup_config_with_model '{"keywords":{"haiku":["quickfix"]}}' "opus"
+assert_exit "custom haiku keyword triggers haiku" '{"prompt":"quickfix this"}' 2
+assert_stderr_contains "custom haiku stderr mentions haiku" '{"prompt":"quickfix this"}' "haiku"
+cleanup
+
+# Invalid regex skipped - hook does not crash
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+python3 -c "import json; json.dump({'patterns':{'opus':['[bad']}}, open('$TMPD/.claude/model-router-config.json','w'))"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+export HOME="$TMPD"
+assert_exit "invalid regex does not crash" '{"prompt":"hello"}' 0
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD"
+
 print_summary
