@@ -41,7 +41,7 @@ Focus: Get config loading, merging, ENV overrides, AI classification, and symlin
   - _Requirements: US-6, FR-4_
   - _Design: Component 1 - ENV Early Exit_
 
-- [ ] 1.4 [VERIFY] Quality checkpoint: verify hook still works after ENV changes
+- [x] 1.4 [VERIFY] Quality checkpoint: verify hook still works after ENV changes
   - **Do**: Run hook with existing classification prompts to confirm no regression
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && echo '{"prompt":"architect the system","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1; test $? -eq 2 && echo '{"prompt":"hello","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1; test $? -eq 0 && echo PASS`
   - **Done when**: Opus keyword still triggers block on sonnet model, neutral prompt still allows
