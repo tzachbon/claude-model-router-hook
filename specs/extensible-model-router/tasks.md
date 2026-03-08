@@ -4,7 +4,7 @@
 
 Focus: Get config loading, merging, ENV overrides, AI classification, and symlinks working end-to-end. Skip edge case polish.
 
-- [ ] 1.1 Create symlinks for hook sync
+- [x] 1.1 Create symlinks for hook sync
   - **Do**:
     1. Replace `hooks/model-router-hook.sh` with symlink to `../plugins/claude-model-router-hook/hooks/model-router-hook.sh`
     2. Replace `hooks/session-init.sh` with symlink to `../plugins/claude-model-router-hook/hooks/session-init.sh`
