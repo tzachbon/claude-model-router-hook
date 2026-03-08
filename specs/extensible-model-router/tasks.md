@@ -77,7 +77,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - _Requirements: US-1, US-2, US-3, FR-2_
   - _Design: Component 4 - Config Assembly_
 
-- [ ] 1.7 [VERIFY] Quality checkpoint: backward compatibility after config refactor
+- [x] 1.7 [VERIFY] Quality checkpoint: backward compatibility after config refactor
   - **Do**: Verify hook behavior unchanged with no config files
   - **Verify**: `cd /home/tzachb/Projects/claude-model-advisor/.claude/worktrees/zazzy-squishing-raven && echo '{"prompt":"architect the system","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "opus" && echo '{"prompt":"git commit all changes","model":"opus"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "haiku" && echo '{"prompt":"build the feature","model":"opus"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1 | grep -q "sonnet" && echo '{"prompt":"hello","model":"sonnet"}' | bash plugins/claude-model-router-hook/hooks/model-router-hook.sh 2>&1; test $? -eq 0 && echo PASS`
   - **Done when**: All four classification scenarios produce same results as before
