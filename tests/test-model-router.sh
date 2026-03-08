@@ -114,4 +114,42 @@ LONG_PROMPT=$(python3 -c "print(' '.join(['word'] * 210))")
 assert_exit "long prompt triggers opus" "{\"prompt\":\"$LONG_PROMPT\"}" 2
 cleanup
 
+# ============================
+# Config Loading Tests
+# ============================
+echo "--- Config Loading Tests ---"
+
+# Valid JSON parsed - custom opus keyword triggers opus
+setup_config '{"keywords":{"opus":["xyzmagicword"]}}'
+assert_exit "valid config custom keyword triggers opus" '{"prompt":"xyzmagicword please"}' 2
+assert_stderr_contains "valid config stderr mentions opus" '{"prompt":"xyzmagicword please"}' "opus"
+cleanup
+
+# Malformed JSON warns but defaults apply
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+python3 -c "open('$TMPD/.claude/model-router-config.json','w').write('{bad json')"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+export HOME="$TMPD"
+assert_stderr_contains "malformed JSON warns on stderr" '{"prompt":"hello"}' "warning"
+assert_exit "malformed JSON still allows through" '{"prompt":"hello"}' 0
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD"
+
+# Missing file is silent - no warnings
+setup_config ""
+rm -f "$HOME/.claude/model-router-config.json"
+assert_exit "missing config silent exit 0" '{"prompt":"hello"}' 0
+cleanup
+
+# Non-dict JSON returns empty
+TMPD=$(mktemp -d)
+mkdir -p "$TMPD/.claude/hooks"
+echo '[1,2,3]' > "$TMPD/.claude/model-router-config.json"
+echo '{"model":"sonnet"}' > "$TMPD/.claude/settings.json"
+export HOME="$TMPD"
+assert_exit "non-dict JSON falls back to defaults" '{"prompt":"hello"}' 0
+export HOME="$ORIG_HOME"
+rm -rf "$TMPD"
+
 print_summary

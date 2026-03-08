@@ -256,7 +256,7 @@ exec(open('plugins/claude-model-router-hook/hooks/model-router-hook.sh').read().
   - **Commit**: `test(router): add classification test cases`
   - _Requirements: US-9, US-10_
 
-- [ ] 3.3 Add config loading tests
+- [x] 3.3 Add config loading tests
   - **Do**:
     1. Test valid JSON parsed: temp config with custom opus keyword, keyword triggers opus
     2. Test malformed JSON warns: temp file with `{bad`, stderr warning, defaults apply
