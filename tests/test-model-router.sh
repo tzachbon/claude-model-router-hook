@@ -270,4 +270,87 @@ assert_exit "CLASSIFIER=keywords works with opus keyword" '{"prompt":"architect 
 unset CLAUDE_ROUTER_CLASSIFIER
 cleanup
 
+# ============================
+# Edge Case Tests
+# ============================
+echo "--- Edge Case Tests ---"
+
+# Same-tier: opus keyword on opus model -> no block
+setup_config_with_model "" "opus"
+assert_exit "opus keyword on opus model allows through" '{"prompt":"architect the system"}' 0
+cleanup
+
+# Same-tier: sonnet pattern on sonnet model -> no block
+setup_config ""
+assert_exit "sonnet pattern on sonnet model allows through" '{"prompt":"build the feature"}' 0
+cleanup
+
+# Same-tier: haiku pattern on haiku model -> no block
+setup_config_with_model "" "haiku"
+assert_exit "haiku pattern on haiku model allows through" '{"prompt":"git commit all changes"}' 0
+cleanup
+
+# Empty prompt -> exit 0
+setup_config ""
+assert_exit "empty prompt allows through" '{"prompt":""}' 0
+cleanup
+
+# Missing prompt field -> exit 0
+setup_config ""
+assert_exit "missing prompt field allows through" '{}' 0
+cleanup
+
+# Model suffix preservation: opus[custom] with haiku task -> stderr mentions haiku not haiku[custom]
+setup_config_with_model "" "opus[custom]"
+assert_exit "suffix model haiku task blocks" '{"prompt":"git commit all changes"}' 2
+assert_stderr_contains "suffix model stderr mentions haiku base" '{"prompt":"git commit all changes"}' "haiku"
+cleanup
+
+# ============================
+# Config Edge Case Tests
+# ============================
+echo "--- Config Edge Case Tests ---"
+
+# Config with default_model set (no crash)
+setup_config '{"default_model":"haiku"}'
+assert_exit "default_model config does not crash" '{"prompt":"hello"}' 0
+cleanup
+
+# Config with classifier: hybrid (keyword match still works without AI)
+setup_config '{"classifier":"hybrid","keywords":{"opus":["hybridword"]}}'
+assert_exit "hybrid classifier keyword match works" '{"prompt":"hybridword please"}' 2
+cleanup
+
+# Multiple comma-separated EXTRA_OPUS_KEYWORDS
+setup_config ""
+export CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS="alphaword,betaword"
+assert_exit "multi EXTRA_OPUS_KEYWORDS first word triggers" '{"prompt":"alphaword please"}' 2
+assert_exit "multi EXTRA_OPUS_KEYWORDS second word triggers" '{"prompt":"betaword please"}' 2
+unset CLAUDE_ROUTER_EXTRA_OPUS_KEYWORDS
+cleanup
+
+# FORCE_MODEL same as current model -> no block
+setup_config ""
+export CLAUDE_ROUTER_FORCE_MODEL=sonnet
+assert_exit "FORCE_MODEL same as current allows through" '{"prompt":"anything"}' 0
+unset CLAUDE_ROUTER_FORCE_MODEL
+cleanup
+
+# ============================
+# Backward Compat / Heuristic Tests
+# ============================
+echo "--- Backward Compat Tests ---"
+
+# Question mark + >100 words triggers opus
+setup_config ""
+WORDS_101=$(python3 -c "print(' '.join(['word'] * 101))")
+assert_exit "question >100 words triggers opus" "{\"prompt\":\"$WORDS_101 what is this?\"}" 2
+cleanup
+
+# Word count <60 guard: haiku keyword in >60 word prompt should NOT match haiku
+setup_config_with_model '{"keywords":{"haiku":["quickfix"]}}' "opus"
+WORDS_65=$(python3 -c "print(' '.join(['word'] * 65))")
+assert_exit "haiku keyword in long prompt skipped" "{\"prompt\":\"$WORDS_65 quickfix\"}" 0
+cleanup
+
 print_summary
