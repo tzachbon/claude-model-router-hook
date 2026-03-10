@@ -91,6 +91,10 @@ layout: center
 <span class="text-cyan-400 font-semibold">Zero latency</span> — ~5ms pattern matching, not seconds
 </p>
 
+<p v-click class="text-center mt-3 opacity-60 text-sm">
+<span class="text-amber-400 font-semibold">Fully customizable</span> — override keywords, patterns & thresholds via <code>model-router.json</code>
+</p>
+
 <!--
 Pure regex and keyword matching, no LLM involved. That's the key insight — you don't need AI to classify "git commit all changes" as a simple task. Opus triggers on architecture keywords or very long prompts. Haiku triggers on short, mechanical prompts matching git/rename/format patterns. Sonnet is the middle ground for feature work.
 -->
@@ -123,7 +127,7 @@ layout: center
 </div>
 
 <!--
-Two things on the roadmap. First, letting users configure their own keywords and patterns so the router fits your workflow, not just mine. Second, a model middleware layer that does the classification automatically — so you don't even need to define patterns.
+One thing left on the roadmap: a model middleware layer that does prompt classification automatically — so you don't need to define any patterns at all. User-configurable keywords and thresholds already shipped via model-router.json.
 -->
 
 ---
