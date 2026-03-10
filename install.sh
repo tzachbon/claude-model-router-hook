@@ -8,8 +8,10 @@ echo "Installing claude-model-router-hook hooks to $HOOKS_DIR"
 
 mkdir -p "$HOOKS_DIR"
 
-cp "$SCRIPT_DIR/hooks/model-router-hook.sh" "$HOOKS_DIR/model-router-hook.sh"
-cp "$SCRIPT_DIR/hooks/session-init.sh"  "$HOOKS_DIR/session-init.sh"
+PLUGIN_HOOKS="$SCRIPT_DIR/plugins/claude-model-router-hook/hooks"
+cp "$PLUGIN_HOOKS/model-router-hook.sh" "$HOOKS_DIR/model-router-hook.sh"
+cp "$PLUGIN_HOOKS/session-init.sh"      "$HOOKS_DIR/session-init.sh"
+cp "$PLUGIN_HOOKS/model_router.py"      "$HOOKS_DIR/model_router.py"
 chmod +x "$HOOKS_DIR/model-router-hook.sh" "$HOOKS_DIR/session-init.sh"
 
 echo ""

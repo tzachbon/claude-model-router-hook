@@ -11,7 +11,7 @@ No build step. The hooks are plain bash scripts.
 
 ## Making changes
 
-- Edit scripts in `hooks/`
+- Edit scripts in `plugins/claude-model-router-hook/hooks/`
 - Test locally by installing with `./install.sh` and running Claude Code
 - Check the log at `~/.claude/hooks/model-router-hook.log`
 
