@@ -1,0 +1,96 @@
+@font-face {
+  font-family: ArtifaktElement;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/artifakt-element-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: ArtifaktElement;
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/artifakt-element-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: ArtifaktElement;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/artifakt-element-bold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: ArtifaktElement;
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/artifakt-element-semi-bold-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: ArtifaktLegend;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/artifakt-legend-bold.woff2') format('woff2');
+}
+
+:root {
+  --slidev-code-padding: 8px 10px;
+  --slidev-code-background: #16161690 !important;
+}
+
+.dark #slide-content,
+#slide-content {
+  background-color: #0a0a0a !important;
+  font-family: ArtifaktElement, ui-sans-serif, system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: ArtifaktLegend, ArtifaktElement, ui-sans-serif, system-ui, sans-serif;
+}
+
+/* v-click transitions — blur + fade */
+.slidev-vclick-target {
+  transition: opacity 500ms ease, filter 200ms ease, color 300ms ease;
+}
+
+.slidev-vclick-hidden {
+  opacity: 0;
+  pointer-events: none;
+  filter: blur(3px);
+}
+
+.fade-out-leave-active {
+  transition: opacity calc(var(--slidev-transition-duration) * 0.6) ease-out, filter 200ms ease;
+}
+
+.fade-out-enter-active {
+  transition: opacity calc(var(--slidev-transition-duration) * 0.8) ease-in, filter 200ms ease;
+  transition-delay: calc(var(--slidev-transition-duration) * 0.6);
+}
+
+.fade-out-enter-from,
+.fade-out-leave-to {
+  opacity: 0;
+  filter: blur(5px);
+}
+
+/* Prevent slide clipping */
+.slidev-layout {
+  padding: 2rem 3rem !important;
+}
+
+/* Code block styling */
+.slidev-code .line {
+  transition: opacity 200ms ease;
+}
+
+.slidev-code {
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+

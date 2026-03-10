@@ -1,0 +1,49 @@
+name: Deploy Slides
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/slides/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: docs/slides
+
+      - name: Build slides
+        run: npx slidev build --base /claude-model-router-hook/
+        working-directory: docs/slides
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/slides/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
