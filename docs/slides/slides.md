@@ -117,27 +117,10 @@ layout: center
 
 <div class="flex flex-col gap-4 max-w-2xl mx-auto">
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
-<h3 class="text-cyan-400 text-base font-semibold mb-2">User-Configurable Patterns</h3>
-<p class="opacity-70 text-sm leading-relaxed">Define your own keywords and regex patterns — customize which prompts route to which model tier.</p>
-</div>
-<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
 <h3 class="text-cyan-400 text-base font-semibold mb-2">Model Middleware</h3>
 <p class="opacity-70 text-sm leading-relaxed">Automatic detection — a lightweight middleware layer that classifies prompts for you, no manual patterns needed.</p>
 </div>
 </div>
-
-<v-click>
-
-```json
-// ~/.claude/model-router.json  (model_router.py loads this at runtime)
-{
-  "opus":  { "keywords": ["my-domain", "audit"] },
-  "haiku": { "patterns": ["\\bcheck status\\b"] },
-  "thresholds": { "haiku_max_word_count": 40 }
-}
-```
-
-</v-click>
 
 <!--
 Two things on the roadmap. First, letting users configure their own keywords and patterns so the router fits your workflow, not just mine. Second, a model middleware layer that does the classification automatically — so you don't even need to define patterns.
