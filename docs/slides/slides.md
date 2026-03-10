@@ -32,14 +32,14 @@ layout: center
 
 <p v-click class="text-base opacity-70 mb-3">Haiku is too weak for architecture decisions and complex refactors</p>
 
-<p v-click class="text-base opacity-60 mb-3">Manual <code>/model</code> switching breaks your flow every few prompts</p>
+<p v-click class="text-base opacity-60 mb-3">Remembering <em>when</em> to switch models is cognitive overhead you shouldn't carry</p>
 
 <p v-click class="text-base opacity-50 mb-3">Sub-agents inherit the wrong tier — Opus spawns Opus for trivial file searches</p>
 
 <p v-click class="text-base font-bold opacity-90 mt-6">You need a router, not a toggle.</p>
 
 <!--
-These are real pain points from daily Claude Code usage. You're constantly context-switching between model tiers, or worse — you forget and burn Opus tokens on a git commit. And sub-agents inherit the parent tier, so one Opus session snowballs into Opus everywhere.
+These are real pain points from daily Claude Code usage. You have to remember which model fits each task, or you forget and burn Opus tokens on a git commit. And sub-agents inherit the parent tier, so one Opus session snowballs into Opus everywhere.
 -->
 
 ---
@@ -99,75 +99,6 @@ Pure regex and keyword matching, no LLM involved. That's the key insight — you
 layout: center
 ---
 
-<h2 class="text-3xl font-bold text-amber-400 mb-4 text-center">Code Walkthrough</h2>
-
-<div class="grid grid-cols-2 gap-6 max-w-5xl">
-<div>
-<h3 class="text-sm opacity-50 mb-3 font-mono">Classification Patterns</h3>
-
-```python {1-7|8-14|15-20}
-opus_keywords = [
-    "architect", "architecture",
-    "evaluate", "tradeoff", "strategy",
-    "compare approaches", "deep dive",
-    "redesign", "across the codebase",
-    "multi-system", "complex refactor",
-    "analyze", "plan mode", "rethink",
-]
-haiku_patterns = [
-    r"\bgit\s+(commit|push|pull|status)\b",
-    r"\brename\b", r"\bmove\s+file\b",
-    r"\bformat\b", r"\blint\b",
-    r"\bremove\s+(unused|dead)\b",
-    # ... 7 more patterns
-]
-sonnet_patterns = [
-    r"\bbuild\b", r"\bimplement\b",
-    r"\bfix\b", r"\bdebug\b",
-    r"\badd\s+feature\b", r"\btest\b",
-    r"\brefactor\b", r"\bapi\b",
-]
-```
-
-</div>
-<div>
-<h3 class="text-sm opacity-50 mb-3 font-mono">Decision Logic</h3>
-
-```python {1-4|5-9|10-15}
-has_opus_signal = any(
-    kw in prompt_lower
-    for kw in opus_keywords
-)
-if (has_opus_signal
-    or (word_count > 100 and "?" in prompt)
-    or word_count > 200):
-    recommendation = "opus"
-else:
-    is_haiku_task = (
-        word_count < 60 and any(
-            re.search(p, prompt_lower)
-            for p in haiku_patterns)
-    )
-    if is_haiku_task:
-        recommendation = "haiku"
-    elif any(re.search(p, prompt_lower)
-             for p in sonnet_patterns):
-        recommendation = "sonnet"
-    else:
-        recommendation = None
-```
-
-</div>
-</div>
-
-<!--
-Here's the actual code. On the left, the three pattern lists — opus keywords are plain string matches, haiku and sonnet use regex for more flexibility. On the right, the decision logic: opus wins if any keyword matches OR the prompt is long and contains a question mark OR over 200 words. Then haiku checks for short mechanical tasks, sonnet catches feature work, and if nothing matches we don't recommend a switch.
--->
-
----
-layout: center
----
-
 <h2 class="text-3xl font-bold text-amber-400 mb-8 text-center">Demo</h2>
 
 <div class="flex flex-col gap-3 max-w-2xl mx-auto">
@@ -187,6 +118,27 @@ layout: center
 
 <!--
 Three examples. A simple git commit gets routed to Haiku — no need for Sonnet tokens. An architecture prompt triggers Opus immediately via keyword match. And if you prefix with a tilde, classification is bypassed entirely — useful when you know what you want. You can check the log file at ~/.claude/hooks/model-router-hook.log to see every classification decision.
+-->
+
+---
+layout: center
+---
+
+<h2 class="text-3xl font-bold text-amber-400 mb-8 text-center">What's Next</h2>
+
+<div class="flex flex-col gap-4 max-w-2xl mx-auto">
+<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
+<h3 class="text-cyan-400 text-base font-semibold mb-2">User-Configurable Patterns</h3>
+<p class="opacity-70 text-sm leading-relaxed">Define your own keywords and regex patterns — customize which prompts route to which model tier.</p>
+</div>
+<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
+<h3 class="text-cyan-400 text-base font-semibold mb-2">Model Middleware</h3>
+<p class="opacity-70 text-sm leading-relaxed">Automatic detection — a lightweight middleware layer that classifies prompts for you, no manual patterns needed.</p>
+</div>
+</div>
+
+<!--
+Two things on the roadmap. First, letting users configure their own keywords and patterns so the router fits your workflow, not just mine. Second, a model middleware layer that does the classification automatically — so you don't even need to define patterns.
 -->
 
 ---
