@@ -99,25 +99,14 @@ Pure regex and keyword matching, no LLM involved. That's the key insight — you
 layout: center
 ---
 
-<h2 class="text-3xl font-bold text-amber-400 mb-8 text-center">Demo</h2>
+<h2 class="text-2xl font-bold text-amber-400 mb-4 text-center">Demo</h2>
 
-<div class="flex flex-col gap-3 max-w-2xl mx-auto">
-<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
-<code class="text-sm opacity-80">git commit all changes</code>
-<p class="text-cyan-400 font-semibold mt-2 text-sm">→ Suggest /model haiku</p>
-</div>
-<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
-<code class="text-sm opacity-80">architect a plugin system with dependency injection</code>
-<p class="text-purple-400 font-semibold mt-2 text-sm">→ Suggest /model opus</p>
-</div>
-<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5 opacity-50">
-<code class="text-sm opacity-80">~ just do it</code>
-<p class="font-semibold mt-2 text-sm">→ Bypass — tilde prefix skips all checks</p>
-</div>
+<div class="flex justify-center">
+<video src="/model-router.mov" controls class="rounded-xl border border-white/10 shadow-2xl" style="max-height: 55vh; max-width: 80%;" />
 </div>
 
 <!--
-Three examples. A simple git commit gets routed to Haiku — no need for Sonnet tokens. An architecture prompt triggers Opus immediately via keyword match. And if you prefix with a tilde, classification is bypassed entirely — useful when you know what you want. You can check the log file at ~/.claude/hooks/model-router-hook.log to see every classification decision.
+Here's the router in action. Watch how it detects the task type from the prompt and suggests the right model tier automatically. No configuration needed — it just works out of the box.
 -->
 
 ---
