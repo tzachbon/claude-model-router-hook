@@ -126,7 +126,9 @@ layout: center
 </div>
 </div>
 
-```json {v-click}
+<v-click>
+
+```json
 // ~/.claude/model-router.json  (model_router.py loads this at runtime)
 {
   "opus":  { "keywords": ["my-domain", "audit"] },
@@ -134,6 +136,8 @@ layout: center
   "thresholds": { "haiku_max_word_count": 40 }
 }
 ```
+
+</v-click>
 
 <!--
 Two things on the roadmap. First, letting users configure their own keywords and patterns so the router fits your workflow, not just mine. Second, a model middleware layer that does the classification automatically — so you don't even need to define patterns.
