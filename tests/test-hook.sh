@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-HOOK="$(cd "$(dirname "$0")/.." && pwd)/hooks/model-router-hook.sh"
+HOOK="$(cd "$(dirname "$0")/.." && pwd)/plugins/claude-model-router-hook/hooks/model-router-hook.sh"
 PASS=0
 FAIL=0
 ERRORS=()
@@ -34,7 +34,8 @@ run_hook() {
     stderr_file=$(mktemp)
 
     # Capture stderr to file, discard stdout, capture exit code without || true
-    (cd "$cwd" && HOME="$home_dir" printf '%s' "$payload" | bash "$HOOK" >"$stderr_file.stdout" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
+    # HOME must be set on the bash command (not printf) so the Python script sees it
+    (cd "$cwd" && printf '%s' "$payload" | HOME="$home_dir" bash "$HOOK" >"$stderr_file.stdout" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
     HOOK_STDERR=$(cat "$stderr_file")
     rm -f "$stderr_file" "$stderr_file.stdout"
 }

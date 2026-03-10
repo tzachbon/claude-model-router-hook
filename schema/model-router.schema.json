@@ -57,22 +57,22 @@
         },
         "keywords": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Plain-text keywords to match against the prompt (case-insensitive)."
         },
         "patterns": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Regex patterns to match against the prompt."
         },
         "remove_keywords": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Keywords to remove from the defaults (only used in \"extend\" mode)."
         },
         "remove_patterns": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Patterns to remove from the defaults (only used in \"extend\" mode)."
         }
       }

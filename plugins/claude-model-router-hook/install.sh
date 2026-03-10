@@ -10,6 +10,7 @@ mkdir -p "$HOOKS_DIR"
 
 cp "$SCRIPT_DIR/hooks/model-router-hook.sh" "$HOOKS_DIR/model-router-hook.sh"
 cp "$SCRIPT_DIR/hooks/session-init.sh"  "$HOOKS_DIR/session-init.sh"
+cp "$SCRIPT_DIR/hooks/model_router.py"  "$HOOKS_DIR/model_router.py"
 chmod +x "$HOOKS_DIR/model-router-hook.sh" "$HOOKS_DIR/session-init.sh"
 
 echo ""

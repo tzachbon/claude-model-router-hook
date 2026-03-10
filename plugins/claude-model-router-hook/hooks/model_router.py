@@ -1,0 +1,219 @@
+"""
+Model Router — classifies prompt complexity and recommends a model tier.
+
+Reads JSON from stdin ({"prompt": "..."}), checks ~/.claude/settings.json for
+the current model, and exits 0 (allow) or 2 (suggest switch, message on stderr).
+"""
+
+import json
+import os
+import pathlib
+import re
+import sys
+from datetime import datetime
+
+
+def load_config(global_path=None, cwd=None):
+    """Load and merge global + project configs.
+
+    Args:
+        global_path: Override path for the global config file (for testing).
+        cwd: Override working directory to search for project config (for testing).
+    """
+    config = {}
+
+    # Global config
+    if global_path is None:
+        global_path = pathlib.Path.home() / ".claude" / "model-router.json"
+    else:
+        global_path = pathlib.Path(global_path)
+    if global_path.exists():
+        try:
+            with open(global_path) as f:
+                config = json.load(f)
+        except Exception:
+            pass
+
+    # Project config (walk up from CWD to find .claude/model-router.json)
+    search_root = pathlib.Path(cwd) if cwd else pathlib.Path.cwd()
+    for parent in [search_root, *search_root.parents]:
+        project_path = parent / ".claude" / "model-router.json"
+        if project_path.exists():
+            try:
+                with open(project_path) as f:
+                    project_config = json.load(f)
+                # Deep merge: project overrides global per-key
+                for key in project_config:
+                    if key == "$schema":
+                        continue
+                    if isinstance(project_config[key], dict) and isinstance(config.get(key), dict):
+                        config[key] = {**config[key], **project_config[key]}
+                    else:
+                        config[key] = project_config[key]
+            except Exception:
+                pass
+            break
+
+    return config
+
+
+def resolve_list(config, tier, field, defaults):
+    """Resolve final keyword/pattern list for a tier based on mode."""
+    tier_config = config.get(tier, {})
+    mode = tier_config.get("mode", "extend")
+
+    if mode == "replace":
+        return tier_config.get(field, [])
+
+    # Extend mode
+    result = list(defaults)
+    result.extend(tier_config.get(field, []))
+
+    # Remove specific entries
+    remove_key = f"remove_{field}"
+    for item in tier_config.get(remove_key, []):
+        if item in result:
+            result.remove(item)
+
+    return result
+
+
+def safe_regex_match(patterns, text):
+    """Test if any pattern matches text, silently skipping invalid regexes."""
+    for p in patterns:
+        try:
+            if re.search(p, text):
+                return True
+        except re.error:
+            pass
+    return False
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+
+    prompt = data.get("prompt", "")
+
+    # Override: prefix with "~" bypasses all checks
+    if prompt.lstrip().startswith("~"):
+        try:
+            log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
+            snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(log_path, "a") as f:
+                f.write(f"[{ts}] OVERRIDE prompt=\"{snippet}\"\n")
+        except Exception:
+            pass
+        sys.exit(0)
+
+    # Detect model from settings.json
+    model = ""
+    settings = {}
+    settings_path = os.path.expanduser("~/.claude/settings.json")
+    try:
+        with open(settings_path, "r") as f:
+            settings = json.load(f)
+        model = settings.get("model", "").lower()
+    except Exception:
+        sys.exit(0)
+
+    is_opus = "opus" in model
+    is_sonnet = "sonnet" in model
+    is_haiku = "haiku" in model
+
+    if not (is_opus or is_sonnet or is_haiku):
+        sys.exit(0)
+
+    prompt_lower = prompt.lower()
+    word_count = len(prompt.split())
+
+    # --- Load config ---
+    config = load_config()
+    thresholds = config.get("thresholds", {})
+    opus_word_count_threshold = thresholds.get("opus_word_count", 200)
+    opus_question_word_count_threshold = thresholds.get("opus_question_word_count", 100)
+    haiku_max_word_count_threshold = thresholds.get("haiku_max_word_count", 60)
+
+    # --- Classify ---
+    default_opus_keywords = [
+        "architect", "architecture", "evaluate", "tradeoff", "trade-off",
+        "strategy", "strategic", "compare approaches", "why does", "deep dive",
+        "redesign", "across the codebase", "investor", "multi-system",
+        "complex refactor", "analyze", "analysis", "plan mode", "rethink",
+        "high-stakes", "critical decision"
+    ]
+    default_haiku_patterns = [
+        r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
+        r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
+        r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
+        r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
+        r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
+        r"\bupdate\s+(version|package)\b"
+    ]
+    default_sonnet_patterns = [
+        r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b", r"\bdebug\b",
+        r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
+        r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
+        r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
+    ]
+
+    opus_keywords = resolve_list(config, "opus", "keywords", default_opus_keywords)
+    opus_patterns = resolve_list(config, "opus", "patterns", [])
+    haiku_patterns = resolve_list(config, "haiku", "patterns", default_haiku_patterns)
+    sonnet_patterns = resolve_list(config, "sonnet", "patterns", default_sonnet_patterns)
+
+    has_opus_keyword = any(kw in prompt_lower for kw in opus_keywords)
+    has_opus_pattern = safe_regex_match(opus_patterns, prompt_lower)
+    has_opus_signal = has_opus_keyword or has_opus_pattern
+
+    if has_opus_signal or (word_count > opus_question_word_count_threshold and "?" in prompt) or word_count > opus_word_count_threshold:
+        recommendation = "opus"
+    else:
+        is_haiku_task = word_count < haiku_max_word_count_threshold and safe_regex_match(haiku_patterns, prompt_lower)
+        if is_haiku_task:
+            recommendation = "haiku"
+        elif safe_regex_match(sonnet_patterns, prompt_lower):
+            recommendation = "sonnet"
+        else:
+            recommendation = None
+
+    # --- Determine if mismatch ---
+    block = False
+    new_model = None
+
+    if recommendation == "haiku" and (is_opus or is_sonnet):
+        block = True
+        new_model = "haiku"
+    elif recommendation == "sonnet" and is_opus:
+        block = True
+        suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
+        new_model = "sonnet" + (suffix.group(1) if suffix else "")
+    elif recommendation == "opus" and (is_sonnet or is_haiku):
+        block = True
+        suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
+        new_model = "opus" + (suffix.group(1) if suffix else "")
+
+    # --- Log ---
+    try:
+        log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
+        snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
+        rec = recommendation or "match"
+        action = f"SUGGEST->{new_model}" if block else "ALLOW"
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_path, "a") as f:
+            f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
+    except Exception:
+        pass
+
+    # --- Act ---
+    if block and new_model:
+        base = new_model.split("[")[0]
+        print(f"Run /model {base} then resend  (~ prefix to skip)", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
