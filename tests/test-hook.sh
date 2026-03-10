@@ -226,6 +226,25 @@ assert_routes_to "invalid JSON config falls back to defaults — opus still rout
 
 rm -rf "$HOME_DIR"
 
+# ── Suite 8: System prompts always allowed ──────────────────────────────────
+echo ""
+echo "--- Suite 8: System prompts (XML-tagged) always pass through ---"
+
+HOME_DIR=$(make_home "sonnet")
+
+run_hook '<task-notification><task-id>abc123</task-id><status>completed</status><summary>Agent completed build and deploy</summary></task-notification>' "$HOME_DIR"
+assert_routes_to "task-notification with sonnet keywords passes through" "allow"
+
+HOME_OPUS=$(make_home "opus")
+
+run_hook '<task-notification><summary>lint the code</summary></task-notification>' "$HOME_OPUS"
+assert_routes_to "task-notification with haiku keywords passes through on opus" "allow"
+
+run_hook '<system-reminder>build a new feature and analyze architecture</system-reminder>' "$HOME_DIR"
+assert_routes_to "system-reminder tag passes through" "allow"
+
+rm -rf "$HOME_DIR" "$HOME_OPUS"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

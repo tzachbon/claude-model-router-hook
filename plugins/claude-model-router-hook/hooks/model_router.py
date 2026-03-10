@@ -97,6 +97,10 @@ def main():
 
     prompt = data.get("prompt", "")
 
+    # System prompts (task notifications, etc.) are not real user input — always allow
+    if prompt.lstrip().startswith("<"):
+        sys.exit(0)
+
     # Override: prefix with "~" bypasses all checks
     if prompt.lstrip().startswith("~"):
         try:
