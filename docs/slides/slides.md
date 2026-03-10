@@ -126,6 +126,15 @@ layout: center
 </div>
 </div>
 
+```json {v-click}
+// ~/.claude/model-router.json  (model_router.py loads this at runtime)
+{
+  "opus":  { "keywords": ["my-domain", "audit"] },
+  "haiku": { "patterns": ["\\bcheck status\\b"] },
+  "thresholds": { "haiku_max_word_count": 40 }
+}
+```
+
 <!--
 Two things on the roadmap. First, letting users configure their own keywords and patterns so the router fits your workflow, not just mine. Second, a model middleware layer that does the classification automatically — so you don't even need to define patterns.
 -->
@@ -148,7 +157,7 @@ class: text-center
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-5">
 <p class="text-amber-400 font-semibold text-sm mb-1">Manual</p>
-<code class="text-xs opacity-80">git clone → cp hooks/* ~/.claude/hooks/</code>
+<code class="text-xs opacity-80">git clone https://github.com/tzachbon/claude-model-router-hook.git && bash claude-model-router-hook/install.sh</code>
 </div>
 </div>
 <p class="mt-8 opacity-40 text-sm">github.com/tzachbon/claude-model-router-hook</p>

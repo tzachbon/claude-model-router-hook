@@ -1,5 +1,5 @@
 @font-face {
-  font-family: 'ArtifaktElement';
+  font-family: ArtifaktElement;
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -7,7 +7,7 @@
 }
 
 @font-face {
-  font-family: 'ArtifaktElement';
+  font-family: ArtifaktElement;
   font-style: italic;
   font-weight: 400;
   font-display: swap;
@@ -15,7 +15,7 @@
 }
 
 @font-face {
-  font-family: 'ArtifaktElement';
+  font-family: ArtifaktElement;
   font-style: normal;
   font-weight: 700;
   font-display: swap;
@@ -23,7 +23,7 @@
 }
 
 @font-face {
-  font-family: 'ArtifaktElement';
+  font-family: ArtifaktElement;
   font-style: italic;
   font-weight: 600;
   font-display: swap;
@@ -31,7 +31,7 @@
 }
 
 @font-face {
-  font-family: 'ArtifaktLegend';
+  font-family: ArtifaktLegend;
   font-style: normal;
   font-weight: 700;
   font-display: swap;
@@ -46,11 +46,11 @@
 .dark #slide-content,
 #slide-content {
   background-color: #0a0a0a !important;
-  font-family: 'ArtifaktElement', ui-sans-serif, system-ui, sans-serif;
+  font-family: ArtifaktElement, ui-sans-serif, system-ui, sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'ArtifaktLegend', 'ArtifaktElement', ui-sans-serif, system-ui, sans-serif;
+  font-family: ArtifaktLegend, ArtifaktElement, ui-sans-serif, system-ui, sans-serif;
 }
 
 /* v-click transitions — blur + fade */
