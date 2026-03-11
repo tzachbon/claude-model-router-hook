@@ -42,6 +42,18 @@
           "default": 60
         }
       }
+    },
+    "fallback": {
+      "type": "object",
+      "description": "AI-powered fallback classification when regex matching produces no result. Uses the claude CLI with Haiku to classify ambiguous prompts.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Haiku-based fallback classification. When true, prompts that don't match any regex pattern are classified by Haiku via the claude CLI."
+        }
+      }
     }
   },
   "definitions": {

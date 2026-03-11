@@ -7,13 +7,15 @@ Imports directly from hooks/model_router.py — the single source of truth.
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Add hooks/ to import path so we can import model_router directly
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "hooks"))
-from model_router import load_config, resolve_list, safe_regex_match
+from model_router import load_config, resolve_list, safe_regex_match, classify_with_haiku_fallback
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -341,6 +343,152 @@ class TestThresholds(unittest.TestCase):
         config = {"haiku": {"mode": "replace", "patterns": [r"[bad-regex"]}}
         result = self._classify("lint", config)
         self.assertIsNone(result)
+
+
+# ── Tests: fallback config ───────────────────────────────────────────────
+
+class TestFallbackConfig(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_fallback_disabled_by_default(self):
+        nonexistent = os.path.join(self.tmpdir, "missing.json")
+        config = load_config(global_path=nonexistent, cwd=self.tmpdir)
+        fallback = config.get("fallback", {})
+        self.assertFalse(fallback.get("enabled", False))
+
+    def test_fallback_enabled_from_config(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": True}})
+        config = load_config(global_path=global_f, cwd=self.tmpdir)
+        self.assertTrue(config["fallback"]["enabled"])
+
+    def test_fallback_disabled_from_config(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": False}})
+        config = load_config(global_path=global_f, cwd=self.tmpdir)
+        self.assertFalse(config["fallback"]["enabled"])
+
+    def test_project_fallback_overrides_global(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": False}})
+
+        project_dir = os.path.join(self.tmpdir, "project")
+        project_f = os.path.join(project_dir, ".claude", "model-router.json")
+        write_json(project_f, {"fallback": {"enabled": True}})
+
+        config = load_config(global_path=global_f, cwd=project_dir)
+        self.assertTrue(config["fallback"]["enabled"])
+
+
+# ── Tests: classify_with_haiku_fallback ──────────────────────────────────
+
+class TestClassifyWithHaikuFallback(unittest.TestCase):
+
+    @mock.patch("model_router.shutil.which", return_value=None)
+    def test_returns_none_when_cli_not_found(self, mock_which):
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_tier_on_valid_response(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="sonnet\n")
+        result = classify_with_haiku_fallback("build a dashboard")
+        self.assertEqual(result, "sonnet")
+
+    @mock.patch("model_router.subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 4))
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_timeout(self, mock_which, mock_run):
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_unexpected_output(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="I think this is complex\n")
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_extracts_tier_from_verbose_response(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="I would classify this as opus.\n")
+        result = classify_with_haiku_fallback("architect the entire system")
+        self.assertEqual(result, "opus")
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_nonzero_exit(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=1, stdout="")
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+
+# ── Tests: tightened patterns ────────────────────────────────────────────
+
+class TestTightenedPatterns(unittest.TestCase):
+    """Verify broad patterns were removed and specific patterns work."""
+
+    SONNET_PATTERNS = [
+        r"\bbuild\b", r"\bimplement\b", r"\bfix\b", r"\bdebug\b",
+        r"\badd\s+feature\b", r"\bcomponent\b", r"\bservice\b",
+        r"\bdeploy\b", r"\brefactor\b", r"\bcss\b", r"\bapi\b", r"\bfunction\b",
+        r"\bwrite\s+(a\s+)?(function|component|service|test|module|script|class|hook|middleware)\b",
+        r"\bcreate\s+(a\s+)?(function|component|service|endpoint|module|database|schema|migration)\b",
+        r"\bupdate\s+(the\s+)?(component|service|handler|logic|controller|middleware|hook)\b",
+        r"\b(add|write)\s+(unit\s+|integration\s+|e2e\s+)?tests?\s+(for|to|covering)\b",
+        r"\bstyle\s+(the\s+)?(component|page|form|layout|section)\b",
+        r"\brouting\s+(logic|config|table|module)\b",
+    ]
+
+    OPUS_KEYWORDS = [
+        "architect", "architecture", "tradeoff", "trade-off",
+        "strategy", "strategic", "compare approaches", "deep dive",
+        "redesign", "across the codebase", "investor", "multi-system",
+        "complex refactor", "plan mode", "rethink",
+        "high-stakes", "critical decision"
+    ]
+
+    def test_bare_write_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "write me a poem"))
+
+    def test_write_function_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "write a function to parse json"))
+
+    def test_bare_create_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "create a folder"))
+
+    def test_create_component_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "create a component for the sidebar"))
+
+    def test_bare_update_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "update the readme"))
+
+    def test_update_handler_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "update the handler to validate input"))
+
+    def test_bare_test_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "test if the server is up"))
+
+    def test_add_tests_for_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "add tests for the auth module"))
+
+    def test_analyze_no_longer_triggers_opus(self):
+        self.assertNotIn("analyze", self.OPUS_KEYWORDS)
+
+    def test_evaluate_no_longer_triggers_opus(self):
+        self.assertNotIn("evaluate", self.OPUS_KEYWORDS)
+
+    def test_why_does_no_longer_triggers_opus(self):
+        self.assertNotIn("why does", self.OPUS_KEYWORDS)
+
+    def test_architecture_still_triggers_opus(self):
+        self.assertIn("architecture", self.OPUS_KEYWORDS)
+
+    def test_deep_dive_still_triggers_opus(self):
+        self.assertIn("deep dive", self.OPUS_KEYWORDS)
 
 
 if __name__ == "__main__":
