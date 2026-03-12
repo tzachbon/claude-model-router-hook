@@ -7,13 +7,15 @@ Imports directly from hooks/model_router.py — the single source of truth.
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Add hooks/ to import path so we can import model_router directly
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "hooks"))
-from model_router import load_config, resolve_list, safe_regex_match
+from model_router import load_config, resolve_list, safe_regex_match, classify_with_haiku_fallback
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -229,22 +231,17 @@ class TestOpusPatterns(unittest.TestCase):
         self.assertEqual(result, [])
 
 
-# ── Tests: thresholds + classification ────────────────────────────────────
+# ── Tests: classification logic ───────────────────────────────────────────
 
-class TestThresholds(unittest.TestCase):
-    """Verify threshold values and boundary semantics (>, <) in routing logic."""
+class TestClassification(unittest.TestCase):
+    """Verify classification routing logic."""
 
     def _classify(self, prompt, config):
         prompt_lower = prompt.lower()
-        word_count = len(prompt.split())
-        thresholds = config.get("thresholds", {})
-        opus_wc = thresholds.get("opus_word_count", 200)
-        opus_q_wc = thresholds.get("opus_question_word_count", 100)
-        haiku_max = thresholds.get("haiku_max_word_count", 60)
 
-        default_opus_kw = ["analyze", "architecture"]
+        default_opus_kw = ["architecture", "deep dive"]
         default_haiku_pat = [r"\blint\b", r"\bformat\b"]
-        default_sonnet_pat = [r"\bfix\b", r"\bbuild\b"]
+        default_sonnet_pat = [r"\bfix\b", r"\bimplement\b"]
 
         opus_keywords = resolve_list(config, "opus", "keywords", default_opus_kw)
         opus_patterns = resolve_list(config, "opus", "patterns", [])
@@ -255,83 +252,25 @@ class TestThresholds(unittest.TestCase):
         has_opus_pattern = safe_regex_match(opus_patterns, prompt_lower)
         has_opus_signal = has_opus_keyword or has_opus_pattern
 
-        if has_opus_signal or \
-           (word_count > opus_q_wc and "?" in prompt) or \
-           word_count > opus_wc:
+        if has_opus_signal:
             return "opus"
-        if word_count < haiku_max and safe_regex_match(haiku_patterns, prompt_lower):
+        if safe_regex_match(haiku_patterns, prompt_lower):
             return "haiku"
         if safe_regex_match(sonnet_patterns, prompt_lower):
             return "sonnet"
         return None
 
-    # --- opus_word_count: uses > (strictly greater than) ---
+    def test_opus_keyword_routes(self):
+        self.assertEqual(self._classify("deep dive into this", {}), "opus")
 
-    def test_default_opus_word_count_above(self):
-        """201 words > 200 → opus"""
-        self.assertEqual(self._classify(" ".join(["word"] * 201), {}), "opus")
+    def test_haiku_pattern_routes(self):
+        self.assertEqual(self._classify("lint the code", {}), "haiku")
 
-    def test_default_opus_word_count_at_boundary(self):
-        """200 words == 200, not > 200 → NOT opus"""
-        self.assertNotEqual(self._classify(" ".join(["word"] * 200), {}), "opus")
+    def test_sonnet_pattern_routes(self):
+        self.assertEqual(self._classify("fix the login bug", {}), "sonnet")
 
-    def test_custom_opus_word_count_above(self):
-        config = {"thresholds": {"opus_word_count": 50}}
-        self.assertEqual(self._classify(" ".join(["word"] * 51), config), "opus")
-
-    def test_custom_opus_word_count_at_boundary(self):
-        config = {"thresholds": {"opus_word_count": 50}}
-        self.assertNotEqual(self._classify(" ".join(["word"] * 50), config), "opus")
-
-    # --- opus_question_word_count: uses > (strictly greater than) ---
-
-    def test_default_question_word_count_above(self):
-        """101 words with ? > 100 → opus"""
-        self.assertEqual(self._classify(" ".join(["word"] * 101) + "?", {}), "opus")
-
-    def test_default_question_word_count_at_boundary(self):
-        """100 words with ? == 100, not > 100 → NOT opus"""
-        self.assertNotEqual(self._classify(" ".join(["word"] * 100) + "?", {}), "opus")
-
-    def test_custom_question_word_count_above(self):
-        config = {"thresholds": {"opus_question_word_count": 50}}
-        self.assertEqual(self._classify(" ".join(["word"] * 51) + "?", config), "opus")
-
-    def test_custom_question_word_count_at_boundary(self):
-        config = {"thresholds": {"opus_question_word_count": 50}}
-        self.assertNotEqual(self._classify(" ".join(["word"] * 50) + "?", config), "opus")
-
-    # --- haiku_max_word_count: uses < (strictly less than) ---
-
-    def test_default_haiku_max_word_count_below(self):
-        """59 words < 60 with lint → haiku"""
-        prompt = " ".join(["word"] * 58) + " lint"
-        self.assertEqual(self._classify(prompt, {}), "haiku")
-
-    def test_default_haiku_max_word_count_at_boundary(self):
-        """60 words == 60, not < 60 → NOT haiku (lint still present)"""
-        prompt = " ".join(["word"] * 59) + " lint"
-        self.assertNotEqual(self._classify(prompt, {}), "haiku")
-
-    def test_custom_haiku_max_word_count_above(self):
-        """25 words >= 20 with lint → NOT haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 24) + " lint"
-        self.assertNotEqual(self._classify(prompt, config), "haiku")
-
-    def test_custom_haiku_max_word_count_at_boundary(self):
-        """20 words == 20, not < 20 → NOT haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 19) + " lint"
-        self.assertNotEqual(self._classify(prompt, config), "haiku")
-
-    def test_custom_haiku_max_word_count_below(self):
-        """19 words < 20 with lint → haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 18) + " lint"
-        self.assertEqual(self._classify(prompt, config), "haiku")
-
-    # --- Other classification tests ---
+    def test_no_match_returns_none(self):
+        self.assertIsNone(self._classify("hello world", {}))
 
     def test_opus_pattern_triggers_routing(self):
         config = {"opus": {"patterns": [r"\bmy-opus-trigger\b"]}}
@@ -341,6 +280,137 @@ class TestThresholds(unittest.TestCase):
         config = {"haiku": {"mode": "replace", "patterns": [r"[bad-regex"]}}
         result = self._classify("lint", config)
         self.assertIsNone(result)
+
+    def test_long_prompt_without_keyword_returns_none(self):
+        """Word count alone should NOT trigger opus routing."""
+        self.assertIsNone(self._classify(" ".join(["word"] * 300), {}))
+
+
+# ── Tests: fallback config ───────────────────────────────────────────────
+
+class TestFallbackConfig(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_fallback_disabled_by_default(self):
+        nonexistent = os.path.join(self.tmpdir, "missing.json")
+        config = load_config(global_path=nonexistent, cwd=self.tmpdir)
+        fallback = config.get("fallback", {})
+        self.assertFalse(fallback.get("enabled", False))
+
+    def test_fallback_enabled_from_config(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": True}})
+        config = load_config(global_path=global_f, cwd=self.tmpdir)
+        self.assertTrue(config["fallback"]["enabled"])
+
+    def test_fallback_disabled_from_config(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": False}})
+        config = load_config(global_path=global_f, cwd=self.tmpdir)
+        self.assertFalse(config["fallback"]["enabled"])
+
+    def test_project_fallback_overrides_global(self):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, {"fallback": {"enabled": False}})
+
+        project_dir = os.path.join(self.tmpdir, "project")
+        project_f = os.path.join(project_dir, ".claude", "model-router.json")
+        write_json(project_f, {"fallback": {"enabled": True}})
+
+        config = load_config(global_path=global_f, cwd=project_dir)
+        self.assertTrue(config["fallback"]["enabled"])
+
+
+# ── Tests: classify_with_haiku_fallback ──────────────────────────────────
+
+class TestClassifyWithHaikuFallback(unittest.TestCase):
+
+    @mock.patch("model_router.shutil.which", return_value=None)
+    def test_returns_none_when_cli_not_found(self, mock_which):
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_tier_on_valid_response(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="sonnet\n")
+        result = classify_with_haiku_fallback("build a dashboard")
+        self.assertEqual(result, "sonnet")
+
+    @mock.patch("model_router.subprocess.run", side_effect=subprocess.TimeoutExpired("claude", 4))
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_timeout(self, mock_which, mock_run):
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_unexpected_output(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="I think this is complex\n")
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_extracts_tier_from_verbose_response(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=0, stdout="I would classify this as opus.\n")
+        result = classify_with_haiku_fallback("architect the entire system")
+        self.assertEqual(result, "opus")
+
+    @mock.patch("model_router.subprocess.run")
+    @mock.patch("model_router.shutil.which", return_value="/usr/local/bin/claude")
+    def test_returns_none_on_nonzero_exit(self, mock_which, mock_run):
+        mock_run.return_value = mock.Mock(returncode=1, stdout="")
+        result = classify_with_haiku_fallback("some prompt")
+        self.assertIsNone(result)
+
+
+# ── Tests: tightened patterns ────────────────────────────────────────────
+
+class TestTightenedPatterns(unittest.TestCase):
+    """Verify broad patterns were removed and specific patterns work."""
+
+    SONNET_PATTERNS = [
+        r"\bimplement\b", r"\bfix\b", r"\bdebug\b",
+        r"\badd\s+feature\b", r"\bdeploy\b", r"\brefactor\b",
+        r"\bwrite\s+(a\s+)?(function|component|service|test|module|script|class|hook|middleware)\b",
+        r"\bcreate\s+(a\s+)?(function|component|service|endpoint|module|database|schema|migration)\b",
+        r"\b(add|write)\s+(unit\s+|integration\s+|e2e\s+)?tests?\s+(for|to|covering)\b",
+    ]
+
+    OPUS_KEYWORDS = [
+        "architecture", "trade-off", "deep dive",
+        "redesign", "across the codebase", "multi-system",
+        "complex refactor", "plan mode",
+    ]
+
+    def test_bare_write_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "write me a poem"))
+
+    def test_write_function_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "write a function to parse json"))
+
+    def test_bare_create_no_longer_matches_sonnet(self):
+        self.assertFalse(safe_regex_match(self.SONNET_PATTERNS, "create a folder"))
+
+    def test_create_component_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "create a component for the sidebar"))
+
+    def test_add_tests_for_matches_sonnet(self):
+        self.assertTrue(safe_regex_match(self.SONNET_PATTERNS, "add tests for the auth module"))
+
+    def test_broad_keywords_removed_from_opus(self):
+        for kw in ["analyze", "evaluate", "why does", "architect", "strategy",
+                    "strategic", "investor", "rethink", "high-stakes", "critical decision"]:
+            self.assertNotIn(kw, self.OPUS_KEYWORDS)
+
+    def test_architecture_still_triggers_opus(self):
+        self.assertIn("architecture", self.OPUS_KEYWORDS)
+
+    def test_deep_dive_still_triggers_opus(self):
+        self.assertIn("deep dive", self.OPUS_KEYWORDS)
 
 
 if __name__ == "__main__":

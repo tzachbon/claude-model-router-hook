@@ -9,6 +9,8 @@ import json
 import os
 import pathlib
 import re
+import shutil
+import subprocess
 import sys
 from datetime import datetime
 
@@ -89,6 +91,48 @@ def safe_regex_match(patterns, text):
     return False
 
 
+def classify_with_haiku_fallback(prompt, timeout=4):
+    """Use Haiku via the claude CLI to classify a prompt when regex is not confident.
+
+    Returns "opus", "sonnet", or "haiku", or None on failure.
+    """
+    if not shutil.which("claude"):
+        return None
+
+    classification_prompt = (
+        "You are a prompt complexity classifier for Claude Code. "
+        "Given the following user prompt, classify it as exactly one of: opus, sonnet, haiku.\n\n"
+        "- opus: complex architectural decisions, multi-system analysis, strategic planning, "
+        "deep trade-off evaluation, large-scale refactoring\n"
+        "- sonnet: building features, implementing components, fixing bugs, debugging, "
+        "writing functions/services, deployment tasks\n"
+        "- haiku: simple git commands, renaming, formatting, linting, deleting files, "
+        "adding imports, trivial edits\n\n"
+        f"User prompt: {prompt[:500]}\n\n"
+        "Respond with exactly one word: opus, sonnet, or haiku."
+    )
+
+    try:
+        result = subprocess.run(
+            ["claude", "-p", "--model", "haiku"],
+            input=classification_prompt,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            return None
+        answer = result.stdout.strip().lower()
+        if answer in ("opus", "sonnet", "haiku"):
+            return answer
+        for tier in ("opus", "sonnet", "haiku"):
+            if tier in answer:
+                return tier
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -132,36 +176,30 @@ def main():
         sys.exit(0)
 
     prompt_lower = prompt.lower()
-    word_count = len(prompt.split())
 
     # --- Load config ---
     config = load_config()
-    thresholds = config.get("thresholds", {})
-    opus_word_count_threshold = thresholds.get("opus_word_count", 200)
-    opus_question_word_count_threshold = thresholds.get("opus_question_word_count", 100)
-    haiku_max_word_count_threshold = thresholds.get("haiku_max_word_count", 60)
 
     # --- Classify ---
     default_opus_keywords = [
-        "architect", "architecture", "evaluate", "tradeoff", "trade-off",
-        "strategy", "strategic", "compare approaches", "why does", "deep dive",
-        "redesign", "across the codebase", "investor", "multi-system",
-        "complex refactor", "analyze", "analysis", "plan mode", "rethink",
-        "high-stakes", "critical decision"
+        "architecture", "trade-off", "deep dive",
+        "redesign", "across the codebase", "multi-system",
+        "complex refactor", "plan mode",
     ]
     default_haiku_patterns = [
         r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
         r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
-        r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
-        r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
-        r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
+        r"\brename\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
+        r"\bformat\b", r"\blint\b",
+        r"\bprettier\b", r"\beslint\b",
         r"\bupdate\s+(version|package)\b"
     ]
     default_sonnet_patterns = [
-        r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b", r"\bdebug\b",
-        r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
-        r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
-        r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
+        r"\bimplement\b", r"\bfix\b", r"\bdebug\b",
+        r"\badd\s+feature\b", r"\bdeploy\b", r"\brefactor\b",
+        r"\bwrite\s+(a\s+)?(function|component|service|test|module|script|class|hook|middleware)\b",
+        r"\bcreate\s+(a\s+)?(function|component|service|endpoint|module|database|schema|migration)\b",
+        r"\b(add|write)\s+(unit\s+|integration\s+|e2e\s+)?tests?\s+(for|to|covering)\b",
     ]
 
     opus_keywords = resolve_list(config, "opus", "keywords", default_opus_keywords)
@@ -173,16 +211,23 @@ def main():
     has_opus_pattern = safe_regex_match(opus_patterns, prompt_lower)
     has_opus_signal = has_opus_keyword or has_opus_pattern
 
-    if has_opus_signal or (word_count > opus_question_word_count_threshold and "?" in prompt) or word_count > opus_word_count_threshold:
+    if has_opus_signal:
         recommendation = "opus"
+    elif safe_regex_match(haiku_patterns, prompt_lower):
+        recommendation = "haiku"
+    elif safe_regex_match(sonnet_patterns, prompt_lower):
+        recommendation = "sonnet"
     else:
-        is_haiku_task = word_count < haiku_max_word_count_threshold and safe_regex_match(haiku_patterns, prompt_lower)
-        if is_haiku_task:
-            recommendation = "haiku"
-        elif safe_regex_match(sonnet_patterns, prompt_lower):
-            recommendation = "sonnet"
-        else:
-            recommendation = None
+        recommendation = None
+
+    # --- Haiku fallback classification ---
+    used_fallback = False
+    if recommendation is None:
+        fallback_config = config.get("fallback", {})
+        if fallback_config.get("enabled", False):
+            recommendation = classify_with_haiku_fallback(prompt)
+            if recommendation is not None:
+                used_fallback = True
 
     # --- Determine if mismatch ---
     block = False
@@ -204,7 +249,9 @@ def main():
     try:
         log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
         snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
-        rec = recommendation or "match"
+        rec = recommendation or "pass-through"
+        if used_fallback:
+            rec = f"{rec}(fallback)"
         action = f"SUGGEST->{new_model}" if block else "ALLOW"
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(log_path, "a") as f:
