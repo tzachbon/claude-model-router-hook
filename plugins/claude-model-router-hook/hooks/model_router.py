@@ -176,41 +176,30 @@ def main():
         sys.exit(0)
 
     prompt_lower = prompt.lower()
-    word_count = len(prompt.split())
 
     # --- Load config ---
     config = load_config()
-    thresholds = config.get("thresholds", {})
-    opus_word_count_threshold = thresholds.get("opus_word_count", 200)
-    opus_question_word_count_threshold = thresholds.get("opus_question_word_count", 100)
-    haiku_max_word_count_threshold = thresholds.get("haiku_max_word_count", 60)
 
     # --- Classify ---
     default_opus_keywords = [
-        "architect", "architecture", "tradeoff", "trade-off",
-        "strategy", "strategic", "compare approaches", "deep dive",
-        "redesign", "across the codebase", "investor", "multi-system",
-        "complex refactor", "plan mode", "rethink",
-        "high-stakes", "critical decision"
+        "architecture", "trade-off", "deep dive",
+        "redesign", "across the codebase", "multi-system",
+        "complex refactor", "plan mode",
     ]
     default_haiku_patterns = [
         r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
         r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
-        r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
-        r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
-        r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
+        r"\brename\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
+        r"\bformat\b", r"\blint\b",
+        r"\bprettier\b", r"\beslint\b",
         r"\bupdate\s+(version|package)\b"
     ]
     default_sonnet_patterns = [
-        r"\bbuild\b", r"\bimplement\b", r"\bfix\b", r"\bdebug\b",
-        r"\badd\s+feature\b", r"\bcomponent\b", r"\bservice\b",
-        r"\bdeploy\b", r"\brefactor\b", r"\bcss\b", r"\bapi\b", r"\bfunction\b",
+        r"\bimplement\b", r"\bfix\b", r"\bdebug\b",
+        r"\badd\s+feature\b", r"\bdeploy\b", r"\brefactor\b",
         r"\bwrite\s+(a\s+)?(function|component|service|test|module|script|class|hook|middleware)\b",
         r"\bcreate\s+(a\s+)?(function|component|service|endpoint|module|database|schema|migration)\b",
-        r"\bupdate\s+(the\s+)?(component|service|handler|logic|controller|middleware|hook)\b",
         r"\b(add|write)\s+(unit\s+|integration\s+|e2e\s+)?tests?\s+(for|to|covering)\b",
-        r"\bstyle\s+(the\s+)?(component|page|form|layout|section)\b",
-        r"\brouting\s+(logic|config|table|module)\b",
     ]
 
     opus_keywords = resolve_list(config, "opus", "keywords", default_opus_keywords)
@@ -222,16 +211,14 @@ def main():
     has_opus_pattern = safe_regex_match(opus_patterns, prompt_lower)
     has_opus_signal = has_opus_keyword or has_opus_pattern
 
-    if has_opus_signal or (word_count > opus_question_word_count_threshold and "?" in prompt) or word_count > opus_word_count_threshold:
+    if has_opus_signal:
         recommendation = "opus"
+    elif safe_regex_match(haiku_patterns, prompt_lower):
+        recommendation = "haiku"
+    elif safe_regex_match(sonnet_patterns, prompt_lower):
+        recommendation = "sonnet"
     else:
-        is_haiku_task = word_count < haiku_max_word_count_threshold and safe_regex_match(haiku_patterns, prompt_lower)
-        if is_haiku_task:
-            recommendation = "haiku"
-        elif safe_regex_match(sonnet_patterns, prompt_lower):
-            recommendation = "sonnet"
-        else:
-            recommendation = None
+        recommendation = None
 
     # --- Haiku fallback classification ---
     used_fallback = False

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Model Router Configuration",
-  "description": "Configuration for the Claude model router hook. Controls keyword/pattern matching and thresholds for routing prompts to opus, sonnet, or haiku.",
+  "description": "Configuration for the Claude model router hook. Controls keyword/pattern matching for routing prompts to opus, sonnet, or haiku.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -19,29 +19,7 @@
     },
     "haiku": {
       "$ref": "#/definitions/tierConfig",
-      "description": "Configuration for haiku-tier routing. Uses regex patterns. Only matches when prompt word count is below haiku_max_word_count threshold."
-    },
-    "thresholds": {
-      "type": "object",
-      "description": "Word-count thresholds that influence tier selection.",
-      "additionalProperties": false,
-      "properties": {
-        "opus_word_count": {
-          "type": "integer",
-          "description": "Prompts longer than this word count are routed to opus.",
-          "default": 200
-        },
-        "opus_question_word_count": {
-          "type": "integer",
-          "description": "Prompts containing '?' and longer than this word count are routed to opus.",
-          "default": 100
-        },
-        "haiku_max_word_count": {
-          "type": "integer",
-          "description": "Haiku patterns only match if the prompt is shorter than this word count.",
-          "default": 60
-        }
-      }
+      "description": "Configuration for haiku-tier routing. Uses regex patterns."
     },
     "fallback": {
       "type": "object",

@@ -75,8 +75,8 @@ echo "--- Suite 1: Default behavior ---"
 
 HOME_DIR=$(make_home "sonnet")
 
-run_hook "analyze the architecture" "$HOME_DIR"
-assert_routes_to "opus keyword 'analyze' routes to opus from sonnet" "opus"
+run_hook "deep dive into the architecture" "$HOME_DIR"
+assert_routes_to "opus keyword 'deep dive' routes to opus from sonnet" "opus"
 
 run_hook "lint the code" "$HOME_DIR"
 assert_routes_to "haiku pattern 'lint' routes to haiku from sonnet" "haiku"
@@ -86,12 +86,12 @@ HOME_OPUS=$(make_home "opus")
 run_hook "lint the code" "$HOME_OPUS"
 assert_routes_to "haiku pattern 'lint' routes to haiku from opus" "haiku"
 
-run_hook "build a new feature" "$HOME_DIR"
-assert_routes_to "sonnet pattern 'build' is allowed when already on sonnet" "allow"
+run_hook "fix the login bug" "$HOME_DIR"
+assert_routes_to "sonnet pattern 'fix' is allowed when already on sonnet" "allow"
 
 HOME_HAIKU=$(make_home "haiku")
 
-run_hook "build a new feature" "$HOME_HAIKU"
+run_hook "fix the login bug" "$HOME_HAIKU"
 # Hook only upgrades haiku→opus (not haiku→sonnet), so sonnet prompts on haiku are allowed
 assert_routes_to "sonnet prompt allowed when already on haiku (no haiku→sonnet redirect)" "allow"
 
@@ -153,70 +153,56 @@ cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
 {
   "opus": {
     "mode": "extend",
-    "remove_keywords": ["analyze"]
+    "remove_keywords": ["deep dive"]
   }
 }
 EOF
 
-run_hook "analyze this problem" "$HOME_DIR"
-assert_routes_to "'analyze' removed from defaults — allow" "allow"
+run_hook "deep dive into this problem" "$HOME_DIR"
+assert_routes_to "'deep dive' removed from defaults — allow" "allow"
 
-run_hook "deep dive into this" "$HOME_DIR"
+run_hook "architecture of the system" "$HOME_DIR"
 assert_routes_to "other default opus keywords still work" "opus"
 
 rm -rf "$HOME_DIR"
 
-# ── Suite 5: Threshold overrides ─────────────────────────────────────────────
+# ── Suite 5: Project config overrides global ─────────────────────────────────
 echo ""
-echo "--- Suite 5: Threshold overrides ---"
+echo "--- Suite 5: Project overrides global ---"
 
 HOME_DIR=$(make_home "sonnet")
 cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
 {
-  "thresholds": {
-    "haiku_max_word_count": 5
+  "opus": {
+    "mode": "extend",
+    "keywords": ["global-trigger"]
   }
 }
 EOF
 
-# "lint" with 10 words — would normally be haiku (< 60), but threshold is now 5
-PROMPT="word word word word word word word word word lint"
-run_hook "$PROMPT" "$HOME_DIR"
-assert_routes_to "haiku pattern with 10 words exceeds haiku_max_word_count=5 — not haiku" "allow"
-
-rm -rf "$HOME_DIR"
-
-# ── Suite 6: Project config overrides global ─────────────────────────────────
-echo ""
-echo "--- Suite 6: Project overrides global ---"
-
-HOME_DIR=$(make_home "sonnet")
-# Global config: custom haiku threshold
-cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
-{
-  "thresholds": { "opus_word_count": 500 }
-}
-EOF
-
-# Project config: stricter threshold
+# Project config overrides global
 PROJECT_DIR=$(mktemp -d)
 mkdir -p "$PROJECT_DIR/.claude"
 cat > "$PROJECT_DIR/.claude/model-router.json" <<'EOF'
 {
-  "thresholds": { "opus_word_count": 10 }
+  "opus": {
+    "mode": "replace",
+    "keywords": ["project-only-trigger"]
+  }
 }
 EOF
 
-# 15-word prompt — over project threshold (10) but under global (500)
-PROMPT="word word word word word word word word word word word word word word word"
-run_hook "$PROMPT" "$HOME_DIR" "$PROJECT_DIR"
-assert_routes_to "project opus_word_count=10 wins over global=500" "opus"
+run_hook "project-only-trigger here" "$HOME_DIR" "$PROJECT_DIR"
+assert_routes_to "project config keyword triggers opus" "opus"
+
+run_hook "deep dive into this" "$HOME_DIR" "$PROJECT_DIR"
+assert_routes_to "default keyword replaced by project config — allow" "allow"
 
 rm -rf "$HOME_DIR" "$PROJECT_DIR"
 
-# ── Suite 7: Invalid JSON config ─────────────────────────────────────────────
+# ── Suite 6: Invalid JSON config ─────────────────────────────────────────────
 echo ""
-echo "--- Suite 7: Invalid JSON graceful fallback ---"
+echo "--- Suite 6: Invalid JSON graceful fallback ---"
 
 HOME_DIR=$(make_home "sonnet")
 printf '{invalid json!!' > "$HOME_DIR/.claude/model-router.json"
@@ -226,9 +212,9 @@ assert_routes_to "invalid JSON config falls back to defaults — opus still rout
 
 rm -rf "$HOME_DIR"
 
-# ── Suite 8: System prompts always allowed ──────────────────────────────────
+# ── Suite 7: System prompts always allowed ──────────────────────────────────
 echo ""
-echo "--- Suite 8: System prompts (XML-tagged) always pass through ---"
+echo "--- Suite 7: System prompts (XML-tagged) always pass through ---"
 
 HOME_DIR=$(make_home "sonnet")
 
