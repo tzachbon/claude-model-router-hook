@@ -117,7 +117,7 @@ EOF
 run_hook "my-custom-keyword should trigger opus" "$HOME_DIR"
 assert_routes_to "user-defined keyword triggers opus" "opus"
 
-run_hook "analyze this" "$HOME_DIR"
+run_hook "deep dive into this" "$HOME_DIR"
 assert_routes_to "built-in keyword still works in extend mode" "opus"
 
 rm -rf "$HOME_DIR"
@@ -221,7 +221,7 @@ echo "--- Suite 7: Invalid JSON graceful fallback ---"
 HOME_DIR=$(make_home "sonnet")
 printf '{invalid json!!' > "$HOME_DIR/.claude/model-router.json"
 
-run_hook "analyze this" "$HOME_DIR"
+run_hook "deep dive into this" "$HOME_DIR"
 assert_routes_to "invalid JSON config falls back to defaults — opus still routes" "opus"
 
 rm -rf "$HOME_DIR"
