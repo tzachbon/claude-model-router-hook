@@ -2,7 +2,8 @@
 Model Router — classifies prompt complexity and recommends a model tier.
 
 Reads JSON from stdin ({"prompt": "..."}), checks ~/.claude/settings.json for
-the current model, and exits 0 (allow) or 2 (suggest switch, message on stderr).
+the current model. In "warn" mode (default), outputs a systemMessage recommendation.
+In "autoswitch" mode, writes settings.json and exits 2 to block and force resend.
 """
 
 import json
@@ -185,27 +186,26 @@ def main():
             recommendation = None
 
     # --- Determine if mismatch ---
-    block = False
     new_model = None
 
     if recommendation == "haiku" and (is_opus or is_sonnet):
-        block = True
         new_model = "haiku"
     elif recommendation == "sonnet" and is_opus:
-        block = True
         suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
         new_model = "sonnet" + (suffix.group(1) if suffix else "")
     elif recommendation == "opus" and (is_sonnet or is_haiku):
-        block = True
         suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
         new_model = "opus" + (suffix.group(1) if suffix else "")
+
+    # --- Read action mode from config ---
+    action_mode = config.get("action", "warn")
 
     # --- Log ---
     try:
         log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
         snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
         rec = recommendation or "match"
-        action = f"SUGGEST->{new_model}" if block else "ALLOW"
+        action = f"{action_mode.upper()}->{new_model}" if new_model else "ALLOW"
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(log_path, "a") as f:
             f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
@@ -213,10 +213,19 @@ def main():
         pass
 
     # --- Act ---
-    if block and new_model:
+    if new_model:
         base = new_model.split("[")[0]
-        print(f"Run /model {base} then resend  (~ prefix to skip)", file=sys.stderr)
-        sys.exit(2)
+        if action_mode == "autoswitch":
+            try:
+                settings["model"] = new_model
+                with open(settings_path, "w") as f:
+                    json.dump(settings, f, indent=2)
+                print(f"Auto-switched to {new_model} — press ↑ Enter to resend  (~ prefix to keep {model})", file=sys.stderr)
+                sys.exit(2)
+            except Exception:
+                print(json.dumps({"systemMessage": f"[model-router-hook] Recommended {new_model} for this task but could not auto-switch. Run /model {base}"}))
+        else:
+            print(json.dumps({"systemMessage": f"[model-router-hook] Recommended {base} for this task (current: {model}). Run /model {base} to switch, or prefix ~ to bypass."}))
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ A Claude Code hook system that classifies every prompt by task complexity and sw
 ## Features
 
 - Classifies prompts by complexity using keyword and pattern matching (zero API calls)
-- Auto-switches `settings.json` and injects a chat message on every tier mismatch
+- Warns on tier mismatch by default; optionally auto-switches `settings.json` (`action: "autoswitch"`)
 - Injects sub-agent model-selection rules into every session via `SessionStart`
 - Prefix any prompt with `~` to bypass classification and keep the current model
 - Logs every classification and switch to `~/.claude/hooks/model-router-hook.log`
@@ -36,7 +36,7 @@ Two hook scripts run inside Claude Code:
 
 ![Sub-agent spawned with Sonnet 4.6 model](assets/sub-agent-routing.png)
 
-**`model-router-hook.sh`** (`UserPromptSubmit`) classifies the incoming prompt, compares the recommended tier against the current model in `settings.json`, and switches if they do not match. The switch is reflected immediately in the current message.
+**`model-router-hook.sh`** (`UserPromptSubmit`) classifies the incoming prompt and compares the recommended tier against the current model in `settings.json`. By default it warns with a recommendation; set `"action": "autoswitch"` in your config to switch automatically.
 
 ## Installation
 
@@ -108,14 +108,20 @@ Prefix any prompt with `~` to skip classification entirely and keep the current 
 
 ## Configuration
 
-Settings are read from `~/.claude/settings.json`. The advisor writes the `model` field under `env` when switching tiers. No other files are modified.
+Routing behavior is controlled by `~/.claude/model-router.json` (global) or `.claude/model-router.json` (project-level, takes priority).
+
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `action` | `"warn"`, `"autoswitch"` | `"warn"` | `warn` shows a recommendation; `autoswitch` changes `settings.json` automatically |
+
+See the [schema](schema/model-router.schema.json) for all options (thresholds, per-tier keywords/patterns, etc.).
 
 ## Log
 
 Activity is written to `~/.claude/hooks/model-router-hook.log`:
 
 ```
-[2026-03-07 12:00:00] model=sonnet rec=opus action=AUTOSWITCH->opus prompt="analyze the entire..."
+[2026-03-07 12:00:00] model=sonnet rec=opus action=WARN->opus prompt="analyze the entire..."
 [2026-03-07 12:01:00] model=opus rec=match action=ALLOW prompt="git commit changes"
 [2026-03-07 12:02:00] OVERRIDE prompt="~ keep opus for this..."
 ```
@@ -173,7 +179,7 @@ cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "## Model Tier Rules\n\nThese rules apply to YOU and to every sub-agent you spawn.\n\n### Sub-agent model selection (MANDATORY)\nWhen calling the Agent tool, you MUST set the model parameter based on task complexity:\n- **haiku** — simple mechanical tasks: file searches, grep, glob, reading a handful of files, git status/log, listing directories, quick lookups. Default for Explore agents unless deep reasoning is required.\n- **sonnet** — standard implementation: writing/editing code, debugging, creating components, running tests, most general-purpose agents.\n- **opus** — architecture decisions, deep multi-file analysis, complex refactors, plan-mode agents, anything requiring sustained reasoning across large context.\n\nNever default all sub-agents to Opus. Match the model to the work.\n\n### Your own tier${TIER_HINT}\n- Haiku: git ops, renames, formatting, simple edits.\n- Sonnet: feature work, debugging, planning.\n- Opus: architecture, deep analysis, multi-system reasoning.\n\n### Configuration\nIf the user wants to customize routing (keywords, patterns, thresholds), offer to create a config file at \`~/.claude/model-router.json\` (global) or \`.claude/model-router.json\` (project-level). Project config overrides global.\n- **thresholds**: \`opus_word_count\` (default 200), \`opus_question_word_count\` (default 100), \`haiku_max_word_count\` (default 60)\n- **Per tier** (opus/sonnet/haiku): \`mode\` (extend|replace), \`keywords\`, \`patterns\`, \`remove_keywords\`, \`remove_patterns\`\n- Mode \`extend\` (default) merges with built-ins; \`replace\` discards them.\n- Add \`\"\$schema\": \"https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/schema/model-router.schema.json\"\` for IDE validation."
+    "additionalContext": "## Model Tier Rules\n\nThese rules apply to YOU and to every sub-agent you spawn.\n\n### Sub-agent model selection (MANDATORY)\nWhen calling the Agent tool, you MUST set the model parameter based on task complexity:\n- **haiku** — simple mechanical tasks: file searches, grep, glob, reading a handful of files, git status/log, listing directories, quick lookups. Default for Explore agents unless deep reasoning is required.\n- **sonnet** — standard implementation: writing/editing code, debugging, creating components, running tests, most general-purpose agents.\n- **opus** — architecture decisions, deep multi-file analysis, complex refactors, plan-mode agents, anything requiring sustained reasoning across large context.\n\nNever default all sub-agents to Opus. Match the model to the work.\n\n### Your own tier${TIER_HINT}\n- Haiku: git ops, renames, formatting, simple edits.\n- Sonnet: feature work, debugging, planning.\n- Opus: architecture, deep analysis, multi-system reasoning.\n\n### Configuration\nIf the user wants to customize routing (keywords, patterns, thresholds), offer to create a config file at \`~/.claude/model-router.json\` (global) or \`.claude/model-router.json\` (project-level). Project config overrides global.\n- **thresholds**: \`opus_word_count\` (default 200), \`opus_question_word_count\` (default 100), \`haiku_max_word_count\` (default 60)\n- **Per tier** (opus/sonnet/haiku): \`mode\` (extend|replace), \`keywords\`, \`patterns\`, \`remove_keywords\`, \`remove_patterns\`\n- Mode \`extend\` (default) merges with built-ins; \`replace\` discards them.\n- **action**: \`warn\` (default) shows a recommendation without switching; \`autoswitch\` changes settings.json automatically.\n- Add \`\"\$schema\": \"https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/schema/model-router.schema.json\"\` for IDE validation."
   }
 }
 EOF
@@ -189,9 +195,8 @@ Write this exact content to the file, then run: chmod +x ~/.claude/hooks/model-r
 
 #!/bin/bash
 # Model Router Hook (UserPromptSubmit)
-# Auto-switches settings.json to the recommended model tier and blocks with
-# a minimal "↑ Enter to resend" message. On settings write failure, falls
-# back to a non-blocking advisory.
+# Classifies prompts and either warns or auto-switches model tier.
+# Default: warn only. Set "action": "autoswitch" in config to switch automatically.
 #
 # Override: prefix prompt with "~" to bypass entirely.
 # Adapted from model-matchmaker (https://github.com/coyvalyss1/model-matchmaker)
@@ -201,8 +206,7 @@ INPUT=$(cat)
 LOG_DIR="$HOME/.claude/hooks"
 mkdir -p "$LOG_DIR" 2>/dev/null
 
-STDERR_FILE=$(mktemp)
-STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
+echo "$INPUT" | python3 -c '
 import json, sys, os, re
 from datetime import datetime
 
@@ -282,27 +286,34 @@ else:
         recommendation = None
 
 # --- Determine if mismatch ---
-block = False
 new_model = None
 
 if recommendation == "haiku" and (is_opus or is_sonnet):
-    block = True
     new_model = "haiku"
 elif recommendation == "sonnet" and is_opus:
-    block = True
     suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
     new_model = "sonnet" + (suffix.group(1) if suffix else "")
 elif recommendation == "opus" and (is_sonnet or is_haiku):
-    block = True
     suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
     new_model = "opus" + (suffix.group(1) if suffix else "")
+
+# --- Load config ---
+action_mode = "warn"  # default: warn only, do not auto-switch
+for cfg_path in [".claude/model-router.json", os.path.expanduser("~/.claude/model-router.json")]:
+    try:
+        with open(cfg_path, "r") as f:
+            cfg = json.load(f)
+        action_mode = cfg.get("action", "warn")
+        break
+    except Exception:
+        pass
 
 # --- Log ---
 try:
     log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
     snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
     rec = recommendation or "match"
-    action = f"AUTOSWITCH->{new_model}" if block else "ALLOW"
+    action = f"{action_mode.upper()}->{new_model}" if new_model else "ALLOW"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as f:
         f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
@@ -310,31 +321,19 @@ except Exception:
     pass
 
 # --- Act ---
-if block and new_model:
-    try:
-        settings["model"] = new_model
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-        print(f"Auto-switched to {new_model} — press ↑ Enter to resend  (~ prefix to keep {model})", file=sys.stderr)
-        sys.exit(2)
-    except Exception:
-        base = new_model.split("[")[0]
-        output = {"systemMessage": f"Model tip: switch to {new_model} for this task. /model {base}"}
-        print(json.dumps(output))
-' 2>"$STDERR_FILE")
-
-EXIT_CODE=$?
-STDERR_CONTENT=$(cat "$STDERR_FILE")
-rm -f "$STDERR_FILE"
-
-if [ $EXIT_CODE -eq 2 ]; then
-    echo "$STDERR_CONTENT" >&2
-    exit 2
-fi
-
-if [ -n "$STDOUT_RESULT" ]; then
-    echo "$STDOUT_RESULT"
-fi
+if new_model:
+    if action_mode == "autoswitch":
+        try:
+            settings["model"] = new_model
+            with open(settings_path, "w") as f:
+                json.dump(settings, f, indent=2)
+            msg = f"[model-router-hook] Switched {model} -> {new_model}  (prefix ~ to bypass)"
+        except Exception:
+            msg = f"[model-router-hook] Recommended {new_model} for this task but could not auto-switch. Run /model {new_model.split(\"[\")[0]}"
+    else:
+        msg = f"[model-router-hook] Recommended {new_model} for this task (current: {model}). Run /model {new_model.split(\"[\")[0]} to switch, or prefix ~ to bypass."
+    print(json.dumps({"systemMessage": msg}))
+'
 
 exit 0
 

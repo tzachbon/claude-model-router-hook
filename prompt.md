@@ -47,7 +47,7 @@ cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "## Model Tier Rules\n\nThese rules apply to YOU and to every sub-agent you spawn.\n\n### Sub-agent model selection (MANDATORY)\nWhen calling the Agent tool, you MUST set the model parameter based on task complexity:\n- **haiku** — simple mechanical tasks: file searches, grep, glob, reading a handful of files, git status/log, listing directories, quick lookups. Default for Explore agents unless deep reasoning is required.\n- **sonnet** — standard implementation: writing/editing code, debugging, creating components, running tests, most general-purpose agents.\n- **opus** — architecture decisions, deep multi-file analysis, complex refactors, plan-mode agents, anything requiring sustained reasoning across large context.\n\nNever default all sub-agents to Opus. Match the model to the work.\n\n### Your own tier${TIER_HINT}\n- Haiku: git ops, renames, formatting, simple edits.\n- Sonnet: feature work, debugging, planning.\n- Opus: architecture, deep analysis, multi-system reasoning.\n\n### Configuration\nIf the user wants to customize routing (keywords, patterns, thresholds), offer to create a config file at \`~/.claude/model-router.json\` (global) or \`.claude/model-router.json\` (project-level). Project config overrides global.\n- **thresholds**: \`opus_word_count\` (default 200), \`opus_question_word_count\` (default 100), \`haiku_max_word_count\` (default 60)\n- **Per tier** (opus/sonnet/haiku): \`mode\` (extend|replace), \`keywords\`, \`patterns\`, \`remove_keywords\`, \`remove_patterns\`\n- Mode \`extend\` (default) merges with built-ins; \`replace\` discards them.\n- Add \`\"\$schema\": \"https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/schema/model-router.schema.json\"\` for IDE validation."
+    "additionalContext": "## Model Tier Rules\n\nThese rules apply to YOU and to every sub-agent you spawn.\n\n### Sub-agent model selection (MANDATORY)\nWhen calling the Agent tool, you MUST set the model parameter based on task complexity:\n- **haiku** — simple mechanical tasks: file searches, grep, glob, reading a handful of files, git status/log, listing directories, quick lookups. Default for Explore agents unless deep reasoning is required.\n- **sonnet** — standard implementation: writing/editing code, debugging, creating components, running tests, most general-purpose agents.\n- **opus** — architecture decisions, deep multi-file analysis, complex refactors, plan-mode agents, anything requiring sustained reasoning across large context.\n\nNever default all sub-agents to Opus. Match the model to the work.\n\n### Your own tier${TIER_HINT}\n- Haiku: git ops, renames, formatting, simple edits.\n- Sonnet: feature work, debugging, planning.\n- Opus: architecture, deep analysis, multi-system reasoning.\n\n### Configuration\nIf the user wants to customize routing (keywords, patterns, thresholds), offer to create a config file at \`~/.claude/model-router.json\` (global) or \`.claude/model-router.json\` (project-level). Project config overrides global.\n- **thresholds**: \`opus_word_count\` (default 200), \`opus_question_word_count\` (default 100), \`haiku_max_word_count\` (default 60)\n- **Per tier** (opus/sonnet/haiku): \`mode\` (extend|replace), \`keywords\`, \`patterns\`, \`remove_keywords\`, \`remove_patterns\`\n- Mode \`extend\` (default) merges with built-ins; \`replace\` discards them.\n- **action**: \`warn\` (default) shows a recommendation without switching; \`autoswitch\` changes settings.json automatically.\n- Add \`\"\$schema\": \"https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/schema/model-router.schema.json\"\` for IDE validation."
   }
 }
 EOF
@@ -166,12 +166,23 @@ elif recommendation == "opus" and (is_sonnet or is_haiku):
     suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
     new_model = "opus" + (suffix.group(1) if suffix else "")
 
+# --- Load config ---
+action_mode = "warn"  # default: warn only, do not auto-switch
+for cfg_path in [".claude/model-router.json", os.path.expanduser("~/.claude/model-router.json")]:
+    try:
+        with open(cfg_path, "r") as f:
+            cfg = json.load(f)
+        action_mode = cfg.get("action", "warn")
+        break
+    except Exception:
+        pass
+
 # --- Log ---
 try:
     log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
     snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
     rec = recommendation or "match"
-    action = f"AUTOSWITCH->{new_model}" if new_model else "ALLOW"
+    action = f"{action_mode.upper()}->{new_model}" if new_model else "ALLOW"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as f:
         f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
@@ -180,13 +191,16 @@ except Exception:
 
 # --- Act ---
 if new_model:
-    try:
-        settings["model"] = new_model
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-        msg = f"[model-router-hook] Switched {model} -> {new_model}  (prefix ~ to bypass)"
-    except Exception:
-        msg = f"[model-router-hook] Recommended {new_model} for this task but could not auto-switch. Run /model {new_model.split(\"[\")[0]}"
+    if action_mode == "autoswitch":
+        try:
+            settings["model"] = new_model
+            with open(settings_path, "w") as f:
+                json.dump(settings, f, indent=2)
+            msg = f"[model-router-hook] Switched {model} -> {new_model}  (prefix ~ to bypass)"
+        except Exception:
+            msg = f"[model-router-hook] Recommended {new_model} for this task but could not auto-switch. Run /model {new_model.split(\"[\")[0]}"
+    else:
+        msg = f"[model-router-hook] Recommended {new_model} for this task (current: {model}). Run /model {new_model.split(\"[\")[0]} to switch, or prefix ~ to bypass."
     print(json.dumps({"systemMessage": msg}))
 '
 
@@ -240,8 +254,8 @@ Restart to activate the hooks.
 ## How It Works
 
 - Every prompt is classified by task complexity (keyword + pattern matching, no API calls).
-- If your active model doesn't match the task tier, it auto-switches `settings.json` and injects a `systemMessage` into the chat: `[model-router-hook] Switched sonnet -> opus`.
-- The switch is visible in the chat on every affected message. No need to re-send.
+- By default (`action: "warn"`), if your active model doesn't match the task tier, it injects a `systemMessage` recommending a switch without changing `settings.json`.
+- Set `action: "autoswitch"` in your config to have it automatically update `settings.json` and switch models.
 - Prefix any prompt with `~` to bypass the advisor entirely.
 - Every session gets context injecting mandatory sub-agent model rules:
   - `haiku` - file lookups, `grep`, `glob`, `git status`, quick reads
