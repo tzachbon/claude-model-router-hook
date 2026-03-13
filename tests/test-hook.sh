@@ -24,20 +24,22 @@ make_home() {
 }
 
 # Run the hook with a given prompt and HOME.
-# Returns exit code via $HOOK_EXIT, stderr via $HOOK_STDERR.
+# Returns exit code via $HOOK_EXIT, stdout via $HOOK_STDOUT, stderr via $HOOK_STDERR.
 run_hook() {
     local prompt="$1"
     local home_dir="$2"
     local cwd="${3:-$home_dir}"
-    local payload stderr_file
+    local payload stderr_file stdout_file
     payload=$(printf '{"prompt":"%s"}' "$prompt")
     stderr_file=$(mktemp)
+    stdout_file=$(mktemp)
 
-    # Capture stderr to file, discard stdout, capture exit code without || true
+    # Capture stdout and stderr to files, capture exit code
     # HOME must be set on the bash command (not printf) so the Python script sees it
-    (cd "$cwd" && printf '%s' "$payload" | HOME="$home_dir" bash "$HOOK" >"$stderr_file.stdout" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
+    (cd "$cwd" && printf '%s' "$payload" | HOME="$home_dir" bash "$HOOK" >"$stdout_file" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
+    HOOK_STDOUT=$(cat "$stdout_file")
     HOOK_STDERR=$(cat "$stderr_file")
-    rm -f "$stderr_file" "$stderr_file.stdout"
+    rm -f "$stderr_file" "$stdout_file"
 }
 
 assert_routes_to() {
@@ -54,14 +56,30 @@ assert_routes_to() {
             ERRORS+=("$test_name")
         fi
     else
-        if [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "$expected_model"; then
+        # Default mode is "warn": exit 0 with systemMessage on stdout mentioning the model
+        if [ "$HOOK_EXIT" -eq 0 ] && echo "$HOOK_STDOUT" | grep -qi "$expected_model"; then
             echo "  PASS: $test_name"
             PASS=$((PASS + 1))
         else
-            echo "  FAIL: $test_name — expected exit 2 with '$expected_model', got exit=$HOOK_EXIT stderr='$HOOK_STDERR'"
+            echo "  FAIL: $test_name — expected exit 0 with '$expected_model' in stdout, got exit=$HOOK_EXIT stdout='$HOOK_STDOUT' stderr='$HOOK_STDERR'"
             FAIL=$((FAIL + 1))
             ERRORS+=("$test_name")
         fi
+    fi
+}
+
+# Assert that autoswitch mode blocks with exit 2
+assert_autoswitch_to() {
+    local test_name="$1"
+    local expected_model="$2"
+
+    if [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "$expected_model"; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name — expected exit 2 with '$expected_model', got exit=$HOOK_EXIT stderr='$HOOK_STDERR'"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
     fi
 }
 
@@ -244,6 +262,55 @@ run_hook '<system-reminder>build a new feature and analyze architecture</system-
 assert_routes_to "system-reminder tag passes through" "allow"
 
 rm -rf "$HOME_DIR" "$HOME_OPUS"
+
+# ── Suite 9: action: warn (default) ──────────────────────────────────────────
+echo ""
+echo "--- Suite 9: action: warn (default — no config) ---"
+
+HOME_DIR=$(make_home "sonnet")
+
+run_hook "analyze the architecture" "$HOME_DIR"
+assert_routes_to "warn mode: opus keyword shows recommendation (no block)" "opus"
+
+# Verify settings.json was NOT modified
+CURRENT_MODEL=$(python3 -c "import json; print(json.load(open('$HOME_DIR/.claude/settings.json')).get('model',''))")
+if [ "$CURRENT_MODEL" = "sonnet" ]; then
+    echo "  PASS: warn mode: settings.json unchanged"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: warn mode: settings.json was modified to '$CURRENT_MODEL'"
+    FAIL=$((FAIL + 1))
+    ERRORS+=("warn mode: settings.json unchanged")
+fi
+
+rm -rf "$HOME_DIR"
+
+# ── Suite 10: action: autoswitch ──────────────────────────────────────────────
+echo ""
+echo "--- Suite 10: action: autoswitch ---"
+
+HOME_DIR=$(make_home "sonnet")
+cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
+{
+  "action": "autoswitch"
+}
+EOF
+
+run_hook "analyze the architecture" "$HOME_DIR"
+assert_autoswitch_to "autoswitch mode: opus keyword blocks with exit 2" "opus"
+
+# Verify settings.json WAS modified
+CURRENT_MODEL=$(python3 -c "import json; print(json.load(open('$HOME_DIR/.claude/settings.json')).get('model',''))")
+if echo "$CURRENT_MODEL" | grep -qi "opus"; then
+    echo "  PASS: autoswitch mode: settings.json updated to opus"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: autoswitch mode: settings.json not updated (model='$CURRENT_MODEL')"
+    FAIL=$((FAIL + 1))
+    ERRORS+=("autoswitch mode: settings.json updated to opus")
+fi
+
+rm -rf "$HOME_DIR"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""

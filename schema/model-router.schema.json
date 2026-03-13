@@ -21,6 +21,12 @@
       "$ref": "#/definitions/tierConfig",
       "description": "Configuration for haiku-tier routing. Uses regex patterns. Only matches when prompt word count is below haiku_max_word_count threshold."
     },
+    "action": {
+      "type": "string",
+      "enum": ["warn", "autoswitch"],
+      "default": "warn",
+      "description": "\"warn\" (default) shows a system message recommending a model switch without changing settings.json; \"autoswitch\" changes settings.json automatically."
+    },
     "thresholds": {
       "type": "object",
       "description": "Word-count thresholds that influence tier selection.",
