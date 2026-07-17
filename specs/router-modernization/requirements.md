@@ -27,8 +27,8 @@ Effort-first routing. Effort is the cheap lever (no cache invalidation, no token
 **So that** I stay in control of model and effort changes
 
 **Acceptance Criteria:**
-- [ ] AC-1.1: Given warn mode (default) and a prompt classified to a different (model, effort) than the current session, when UserPromptSubmit fires, then hook exits 2 with stderr message suggesting `/model <alias>` and `/effort <level>` and asking user to resend.
-- [ ] AC-1.2: Given classification matches current session tier and effort, when hook runs, then exit 0 with no message.
+- [ ] AC-1.1: Given warn mode (default) and a prompt classified to a different tier, or to the same tier with effort distance >= effort_warn_distance (default 2), when UserPromptSubmit fires, then hook exits 2 with stderr message suggesting `/model <alias>` and `/effort <level>` and asking user to resend.
+- [ ] AC-1.2: Given classification matches current session tier and effort distance < effort_warn_distance, when hook runs, then exit 0 with no message.
 - [ ] AC-1.3: Given any internal error (malformed stdin, unreadable settings, config parse failure), when hook runs, then exit 0 (fail-open, prompt never blocked).
 - [ ] AC-1.4: Given current model has a suffix tag (e.g. `[1m]`), when a switch is suggested, then the suggested model preserves the suffix.
 
@@ -64,7 +64,7 @@ Note: AC-2.1..2.3 verified via the US-10 labeled eval set.
 
 **Acceptance Criteria:**
 - [ ] AC-4.1: Given a PreToolUse event on the Agent tool with `subagent_type` generic (general-purpose, absent, or default), when `tool_input.prompt` is classified, then hook returns `permissionDecision: "allow"` + `updatedInput` rewriting `subagent_type` to a plugin-shipped agent variant carrying the target effort frontmatter, and injecting `model`.
-- [ ] AC-4.2: Given the taxonomy decision (model, effort), when the variant is selected, then plugin ships one agent definition per required (model, effort) cell so every decision maps to an existing variant.
+- [ ] AC-4.2: Given the taxonomy decision (model, effort), when the variant is selected, then plugin ships one agent definition per default taxonomy (model, effort) cell so every default-target decision maps to an existing variant; config-overridden targets without a matching variant degrade to model-only injection (effort advisory).
 - [ ] AC-4.3: Given classification is abstain (needs-info), when hook runs, then original tool_input passes through unmodified (allow, no rewrite).
 - [ ] AC-4.4: Given any classifier error/timeout, when hook runs, then allow with unmodified input (fail-open).
 
