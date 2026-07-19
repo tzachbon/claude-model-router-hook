@@ -1,10 +1,29 @@
-"""Effort-first policy: class targets and main-prompt decision matrix (FR-4, FR-5, FR-20)."""
+"""Effort-first policy: class targets, decision matrix, gates and floors (FR-4, FR-5, FR-20, FR-21, FR-22)."""
 
-from .ladder import TIERS, Decision, detect_tier, effort_distance
+import dataclasses
+
+from .config import safe_regex_match
+from .ladder import EFFORTS, TIERS, Decision, detect_tier, effort_distance
 
 # Same-tier cells where effort escalates past the class target (effort-first):
 # the session already sits on the target tier, so only effort can go higher.
 _STAY_XHIGH_CLASSES = ("architecture", "extreme")
+
+# Shipped defaults (config-extendable via capability_gates / effort_floors).
+DEFAULT_GATE_PATTERNS = [
+    r"\bsendmessage\b",
+    r"\bhand[-\s]?offs?\b",
+    r"\bcoordinat\w*\s+agents?\b",
+    r"\bspawn\w*\s+sub[-\s]?agents?\b",
+    r"\bmulti[-\s]?agent\b",
+]
+DEFAULT_FLOOR_PATTERNS = [
+    r"\bmigrat\w*\b",
+    r"\bdatabases?\b",
+    r"\bprod(?:uction)?\b",
+    r"\bdelete\s+data\b",
+    r"\bbackfills?\b",
+]
 
 
 def target_for_class(klass, cfg, source="heuristic"):
@@ -63,3 +82,57 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score):
     if effort_distance(current_effort, target.effort) < warn_distance:
         return None
     return Decision(current_tier, target.effort, klass, target.source)
+
+
+def _resolve_patterns(section_cfg, defaults):
+    """Merge shipped default patterns with config (extend/replace/remove)."""
+    if not isinstance(section_cfg, dict):
+        section_cfg = {}
+    extra = section_cfg.get("patterns") or []
+    if section_cfg.get("mode") == "replace":
+        return list(extra)
+    items = list(defaults) + [x for x in extra if x not in defaults]
+    removed = set(section_cfg.get("remove_patterns") or [])
+    return [x for x in items if x not in removed]
+
+
+def _max_effort(a, b):
+    """Higher of two effort levels; either may be None."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if EFFORTS.index(a) >= EFFORTS.index(b) else b
+
+
+def apply_gates(prompt, decision, cfg):
+    """Capability gates and effort floors on a classified decision (FR-21, FR-22).
+
+    - capability_gates patterns (handoff/multi-agent work) -> min tier sonnet;
+      a haiku decision is bumped to (sonnet, medium) (AC-6.3).
+    - debugging class -> effort >= high (AC-6.5).
+    - effort_floors patterns (data-handling risk) -> effort >= effort_floors.floor;
+      any floor implies min tier sonnet (haiku carries no effort).
+    """
+    prompt_lower = prompt.lower()
+    floors_cfg = cfg.get("effort_floors") or {}
+
+    floor = "high" if decision.klass == "debugging" else None
+    floor_patterns = _resolve_patterns(floors_cfg, DEFAULT_FLOOR_PATTERNS)
+    if safe_regex_match(floor_patterns, prompt_lower):
+        cfg_floor = floors_cfg.get("floor", "high")
+        if cfg_floor not in EFFORTS:
+            cfg_floor = "high"
+        floor = _max_effort(floor, cfg_floor)
+
+    gate_patterns = _resolve_patterns(cfg.get("capability_gates"), DEFAULT_GATE_PATTERNS)
+    min_sonnet = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
+
+    model, effort = decision.model, decision.effort
+    if min_sonnet and TIERS.index(model) < TIERS.index("sonnet"):
+        model, effort = "sonnet", "medium"
+    if floor is not None and (effort is None or EFFORTS.index(effort) < EFFORTS.index(floor)):
+        effort = floor
+    if model == decision.model and effort == decision.effort:
+        return decision
+    return dataclasses.replace(decision, model=model, effort=effort)

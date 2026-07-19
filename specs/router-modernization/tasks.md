@@ -157,7 +157,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: Compiles, v1 tests still green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.4 policy: capability gates and effort floors
+- [x] 2.4 policy: capability gates and effort floors
   - **Do**:
     1. Add `apply_gates(prompt, decision, cfg)`: `capability_gates` patterns (SendMessage, handoff, coordinate agents, spawn subagents, multi-agent) -> min tier sonnet; mechanical->haiku bumped to (sonnet, medium) (FR-21, AC-6.3).
     2. Debugging class floor: effort >= high (FR-22, AC-6.5).
