@@ -53,7 +53,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-35, FR-36, FR-37, NFR-3, NFR-5_
   - _Design: hookio.py_
 
-- [ ] 1.3 [VERIFY] Quality checkpoint: compile + existing unit tests
+- [x] 1.3 [VERIFY] Quality checkpoint: compile + existing unit tests
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py` then `python3 -m unittest discover tests -v` (existing v1 tests untouched, must stay green)
   - **Verify**: Both commands exit 0
   - **Done when**: Package compiles, existing tests pass
