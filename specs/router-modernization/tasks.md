@@ -151,7 +151,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-19, AC-2.3_
   - _Design: Taxonomy Design extreme row_
 
-- [ ] 2.3 [VERIFY] Quality checkpoint: compile + unit tests
+- [x] 2.3 [VERIFY] Quality checkpoint: compile + unit tests
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: Compiles, v1 tests still green
