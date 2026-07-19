@@ -506,7 +506,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(cli): cover fallback parse, fail-open ladder, child guard`
   - _Requirements: FR-25, FR-26, FR-27, AC-7.3, AC-7.4, AC-7.6_
 
-- [ ] 3.8 test_router.py: cache tests
+- [x] 3.8 test_router.py: cache tests
   - **Do**:
     1. Cache hit skips subprocess (AC-7.5); eviction at `cache_max_entries` drops oldest 20%; corrupt cache file discarded and rewritten (NFR-9); `CLAUDE_PLUGIN_DATA` unset -> no cache file, still returns.
     2. Assert cache file contains hashes + classes only, no raw prompt substring (NFR-5).

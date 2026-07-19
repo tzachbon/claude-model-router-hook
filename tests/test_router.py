@@ -873,5 +873,91 @@ class TestCliFallback(unittest.TestCase):
         run.assert_not_called()
 
 
+class TestCliFallbackCache(unittest.TestCase):
+    """classify_cli disk cache: hit, eviction, corruption, privacy (mocked)."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.cfg = {"classifier": {"cli_fallback": True, "cli_timeout_seconds": 8}}
+
+    @staticmethod
+    def _completed(returncode=0, stdout=""):
+        return subprocess.CompletedProcess(
+            args=["claude"], returncode=returncode, stdout=stdout, stderr=""
+        )
+
+    def _cache_file(self):
+        return os.path.join(self.tmpdir, cli_fallback.CACHE_FILENAME)
+
+    def test_cache_hit_skips_subprocess(self):
+        """Second call with the same prompt is served from cache (AC-7.5)."""
+        prompt = "design the whole auth architecture"
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "architecture")) as run:
+            first = classify_cli(prompt, self.cfg, self.tmpdir)
+            second = classify_cli(prompt, self.cfg, self.tmpdir)
+        self.assertEqual(first, "architecture")
+        self.assertEqual(second, "architecture")
+        self.assertEqual(run.call_count, 1)
+
+    def test_data_dir_none_writes_no_cache_still_returns(self):
+        """CLAUDE_PLUGIN_DATA unset (data_dir None): no cache file, still returns."""
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "mechanical")) as run:
+            result = classify_cli("rename a file", self.cfg, None)
+        self.assertEqual(result, "mechanical")
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(os.path.exists(self._cache_file()))
+
+    def test_corrupt_cache_discarded_and_rewritten(self):
+        """A garbage cache file is ignored, subprocess runs, file rewritten (NFR-9)."""
+        with open(self._cache_file(), "w") as fh:
+            fh.write("{ not json at all ")
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "debugging")) as run:
+            result = classify_cli("debug the failing test", self.cfg, self.tmpdir)
+        self.assertEqual(result, "debugging")
+        self.assertEqual(run.call_count, 1)
+        with open(self._cache_file()) as fh:
+            cache = json.load(fh)
+        self.assertIsInstance(cache, dict)
+        self.assertEqual(len(cache), 1)
+
+    def test_eviction_drops_oldest_fraction(self):
+        """Exceeding cache_max_entries evicts the oldest 20% by timestamp."""
+        cfg = {"classifier": {
+            "cli_fallback": True, "cli_timeout_seconds": 8, "cache_max_entries": 5,
+        }}
+        prompts = ["prompt number %d with unique text" % i for i in range(6)]
+        clock = iter(range(100, 200))
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "implementation")):
+            with mock.patch.object(cli_fallback.time, "time", lambda: next(clock)):
+                for prompt in prompts:
+                    classify_cli(prompt, cfg, self.tmpdir)
+        with open(self._cache_file()) as fh:
+            cache = json.load(fh)
+        # 6 stored, max 5 -> oldest max(1, int(5*0.2))=1 dropped
+        self.assertEqual(len(cache), 5)
+        self.assertNotIn(cli_fallback._cache_key(prompts[0]), cache)
+        self.assertIn(cli_fallback._cache_key(prompts[5]), cache)
+
+    def test_cache_file_has_hashes_and_classes_only(self):
+        """Cache stores hash keys + class/timestamp, never raw prompt text (NFR-5)."""
+        prompt = "SECRETMARKER build the payment service integration"
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "implementation")):
+            classify_cli(prompt, self.cfg, self.tmpdir)
+        with open(self._cache_file()) as fh:
+            raw = fh.read()
+        self.assertNotIn("SECRETMARKER", raw)
+        self.assertNotIn("payment", raw)
+        cache = json.loads(raw)
+        (key, entry), = cache.items()
+        self.assertEqual(key, cli_fallback._cache_key(prompt))
+        self.assertEqual(set(entry), {"c", "t"})
+        self.assertEqual(entry["c"], "implementation")
+
+
 if __name__ == "__main__":
     unittest.main()
