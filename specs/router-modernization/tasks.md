@@ -425,7 +425,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-41, AC-1.3, AC-9.1, AC-9.2_
   - _Design: Test Strategy, haiku->sonnet decision_
 
-- [ ] 2.27 Delete v1 implementation files
+- [x] 2.27 Delete v1 implementation files
   - **Do**:
     1. `git rm plugins/claude-model-router-hook/hooks/model_router.py plugins/claude-model-router-hook/hooks/model-router-hook.sh plugins/claude-model-router-hook/hooks/session-init.sh`.
   - **Files**: plugins/claude-model-router-hook/hooks/model_router.py, plugins/claude-model-router-hook/hooks/model-router-hook.sh, plugins/claude-model-router-hook/hooks/session-init.sh
