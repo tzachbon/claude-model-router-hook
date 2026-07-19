@@ -386,7 +386,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-9, FR-10, FR-11, FR-32, AC-3.1, AC-3.2, AC-3.3, AC-8.3_
   - _Design: Autoswitch Design, v1 hint_
 
-- [ ] 2.23 hooks.json rewire
+- [x] 2.23 hooks.json rewire
   - **Do**:
     1. Rewrite `PLUGIN/hooks/hooks.json`: UserPromptSubmit -> `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py"` timeout 10; SessionStart -> `session_init.py` timeout 5; add PreToolUse matcher `"Agent|Task"` -> `pre_tool_use.py` timeout 10 (FR-29 budget table).
   - **Files**: plugins/claude-model-router-hook/hooks/hooks.json
