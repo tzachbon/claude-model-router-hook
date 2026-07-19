@@ -413,7 +413,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-40, AC-10.4_
   - _Design: File Structure, Test Strategy_
 
-- [ ] 2.26 Update test-hook.sh v1 suites for v2 entrypoint
+- [x] 2.26 Update test-hook.sh v1 suites for v2 entrypoint
   - **Do**:
     1. Point `HOOK` invocation at `python3 plugins/claude-model-router-hook/hooks/user_prompt_submit.py` (bash wrapper going away).
     2. `make_home` writes a global v2 config with `classifier.cli_fallback: false` (CLI fallback OFF in all scripted tests).
