@@ -10,7 +10,7 @@ Non-negotiable invariants (repeated in relevant tasks): never emit `claude-mytho
 
 Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entrypoint emitting a correct warn with (model, effort) on a canned prompt, fail-open intact.
 
-- [ ] 1.1 Create router package + ladder.py
+- [x] 1.1 Create router package + ladder.py
   - **Do**:
     1. Create `PLUGIN/hooks/router/__init__.py` (empty).
     2. Create `PLUGIN/hooks/router/ladder.py`: `TIERS = ("haiku","sonnet","opus","fable")`, `MODEL_IDS` per design, `EFFORTS = ("low","medium","high","xhigh","max")`, frozen dataclass `Decision(model, effort, klass, source)`.
