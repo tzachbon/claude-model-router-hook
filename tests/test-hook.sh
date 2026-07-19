@@ -27,6 +27,18 @@ make_home() {
     echo "$tmpdir"
 }
 
+# Like make_home but also pins effortLevel in settings.json (effort-distance suites).
+make_home_effort() {
+    local model="$1"
+    local effort="$2"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkdir -p "$tmpdir/.claude/hooks"
+    printf '{"model":"%s","effortLevel":"%s"}' "$model" "$effort" > "$tmpdir/.claude/settings.json"
+    printf '{"version":2,"classifier":{"cli_fallback":false}}' > "$tmpdir/.claude/model-router.json"
+    echo "$tmpdir"
+}
+
 # Run the hook with a given prompt and HOME.
 # Returns exit code via $HOOK_EXIT, stderr via $HOOK_STDERR.
 run_hook() {
@@ -269,6 +281,61 @@ run_hook '<system-reminder>build a new feature and analyze architecture</system-
 assert_routes_to "system-reminder tag passes through" "allow"
 
 rm -rf "$HOME_DIR" "$HOME_OPUS"
+
+# ── Assert HOOK_STDERR contains a fixed substring ────────────────────────────
+assert_stderr_contains() {
+    local test_name="$1"
+    local needle="$2"
+
+    if echo "$HOOK_STDERR" | grep -qF -- "$needle"; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name - stderr missing '$needle' | stderr: $HOOK_STDERR"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    fi
+}
+
+# ── Suite 9: Extreme class, effort emission, suffix (FR-41, AC-1.1/1.4/10.5) ──
+echo ""
+echo "--- Suite 9: Extreme -> fable, effort message, [1m] suffix ---"
+
+EXTREME_PROMPT="write an rfc design doc for the distributed architecture and evaluate the tradeoffs"
+
+HOME_DIR=$(make_home "sonnet")
+
+run_hook "$EXTREME_PROMPT" "$HOME_DIR"
+assert_routes_to "extreme prompt on sonnet suggests fable" "fable"
+assert_stderr_contains "extreme warn emits /effort suggestion" "/effort"
+
+rm -rf "$HOME_DIR"
+
+# AC-1.4: [1m] suffix on the session model carries into the /model suggestion,
+# alongside the /effort part.
+HOME_1M=$(make_home "sonnet[1m]")
+
+run_hook "$EXTREME_PROMPT" "$HOME_1M"
+assert_stderr_contains "[1m] suffix preserved in /model fable suggestion" "/model fable[1m]"
+assert_stderr_contains "[1m] suffix suggestion still carries /effort" "/effort"
+
+rm -rf "$HOME_1M"
+
+# AC-10.5 anti-nagging: architecture on opus targets opus/xhigh; effort_distance
+# from high is 1 (< default warn distance 2) so it stays silent, while distance 2
+# (from medium) warns with the /effort xhigh suggestion.
+ARCH_PROMPT="analyze the architecture and evaluate the tradeoffs deeply"
+
+HOME_D1=$(make_home_effort "opus" "high")
+run_hook "$ARCH_PROMPT" "$HOME_D1"
+assert_routes_to "effort distance 1 mismatch stays silent" "allow"
+rm -rf "$HOME_D1"
+
+HOME_D2=$(make_home_effort "opus" "medium")
+run_hook "$ARCH_PROMPT" "$HOME_D2"
+assert_routes_to "effort distance 2 mismatch warns" "opus"
+assert_stderr_contains "effort distance 2 warn suggests /effort xhigh" "/effort xhigh"
+rm -rf "$HOME_D2"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""

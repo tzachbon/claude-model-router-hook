@@ -531,7 +531,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All green
   - **Commit**: `chore(tests): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 3.11 test-hook.sh: new UserPromptSubmit suites
+- [x] 3.11 test-hook.sh: new UserPromptSubmit suites
   - **Do**:
     1. Add suites: extreme prompt on sonnet session -> fable suggestion in stderr; warn message contains `/effort <level>`; `[1m]` suffix preserved alongside effort suggestion (AC-1.4); effort-only distance 1 mismatch silent, distance >= 2 warns.
     2. All with fake HOME configs, `classifier.cli_fallback: false`.
