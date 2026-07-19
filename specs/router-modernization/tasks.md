@@ -402,7 +402,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green (v1 scripts still present, v1 suites still pass)
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.25 Refactor tests/test_config.py to router.config imports
+- [x] 2.25 Refactor tests/test_config.py to router.config imports
   - **Do**:
     1. Change sys.path/import to `router.config` (`load_config`, `resolve_list`, plus `safe_regex_match` home in v2); drop the inline `_classify` reimplementation (FR-40).
     2. Adapt assertions to v2 config shape where key names moved (classes.* instead of opus/sonnet/haiku top level) while keeping v1-semantics coverage via `migrate_v1`.
