@@ -102,7 +102,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - **Done when**: Package compiles, existing tests still green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 1.8 user_prompt_submit.py entrypoint (warn path)
+- [x] 1.8 user_prompt_submit.py entrypoint (warn path)
   - **Do**:
     1. Create `PLUGIN/hooks/user_prompt_submit.py`: `fail_open`-wrapped main; exit 0 immediately on `is_child()` (CLAUDE_MODEL_ROUTER_CHILD guard), `bypassed(prompt)`, malformed stdin, unreadable settings.
     2. Read current (model, effort) via `current_model_effort`; classify via taxonomy + policy; abstain or match -> exit 0.
