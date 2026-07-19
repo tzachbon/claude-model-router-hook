@@ -7,9 +7,11 @@ Phase 3.1 covers router.ladder: Decision invariants and model-string utilities.
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Add hooks/ to import path so we can import the router package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "hooks"))
@@ -46,6 +48,8 @@ from router.policy import (  # noqa: E402
     main_prompt_decision,
     apply_gates,
 )
+from router import cli_fallback  # noqa: E402
+from router.cli_fallback import classify_cli  # noqa: E402
 
 
 def _det_cfg():
@@ -798,6 +802,75 @@ class TestEffortWarnDistance(unittest.TestCase):
         d = main_prompt_decision("architecture", "sonnet", "high", self.cfg, _score(0))
         self.assertEqual(d.model, "opus")
         self.assertEqual(d.effort, "high")
+
+
+class TestCliFallback(unittest.TestCase):
+    """classify_cli fail-open ladder and child guard (mocked subprocess)."""
+
+    def setUp(self):
+        # cli_fallback on so the subprocess path is exercised; data_dir None
+        # skips caching so every call hits the mocked subprocess.
+        self.cfg = {"classifier": {"cli_fallback": True, "cli_timeout_seconds": 8}}
+
+    @staticmethod
+    def _completed(returncode=0, stdout=""):
+        return subprocess.CompletedProcess(
+            args=["claude"], returncode=returncode, stdout=stdout, stderr=""
+        )
+
+    def test_valid_class_reply_parsed(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "architecture\n")) as run:
+            self.assertEqual(classify_cli("design a system", self.cfg, None), "architecture")
+        self.assertEqual(run.call_count, 1)
+
+    def test_abstain_reply_parsed(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "abstain")):
+            self.assertEqual(classify_cli("???", self.cfg, None), "abstain")
+
+    def test_garbage_reply_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "banana split please")):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_empty_reply_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "   \n")):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_nonzero_exit_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(1, "architecture")):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_timeout_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=8)):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_missing_binary_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               side_effect=FileNotFoundError()):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_os_error_is_none(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               side_effect=OSError()):
+            self.assertIsNone(classify_cli("x", self.cfg, None))
+
+    def test_subprocess_env_carries_child_flag(self):
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "mechanical")) as run:
+            classify_cli("rename a file", self.cfg, None)
+        _, kwargs = run.call_args
+        self.assertEqual(kwargs["env"].get("CLAUDE_MODEL_ROUTER_CHILD"), "1")
+
+    def test_cli_fallback_disabled_skips_subprocess(self):
+        cfg = {"classifier": {"cli_fallback": False}}
+        with mock.patch.object(cli_fallback.subprocess, "run") as run:
+            self.assertIsNone(classify_cli("anything", cfg, None))
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

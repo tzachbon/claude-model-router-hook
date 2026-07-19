@@ -496,7 +496,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All green
   - **Commit**: `chore(tests): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 3.7 test_router.py: cli_fallback tests (mocked subprocess)
+- [x] 3.7 test_router.py: cli_fallback tests (mocked subprocess)
   - **Do**:
     1. Mock `subprocess.run`: valid class reply parsed; garbage reply -> None; non-zero exit -> None; TimeoutExpired -> None; FileNotFoundError -> None (fail-open ladder, AC-7.4).
     2. Assert subprocess env carries `CLAUDE_MODEL_ROUTER_CHILD=1`; assert `cli_fallback: false` never invokes subprocess (AC-7.6).
