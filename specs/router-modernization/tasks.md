@@ -434,7 +434,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Commit**: `refactor(hooks): delete v1 monolith and bash wrappers`
   - _Design: File Structure delete rows_
 
-- [ ] 2.28 [VERIFY] Quality checkpoint: full local suite post-deletion
+- [x] 2.28 [VERIFY] Quality checkpoint: full local suite post-deletion
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py plugins/claude-model-router-hook/hooks/*.py && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: Everything green with v1 files removed
