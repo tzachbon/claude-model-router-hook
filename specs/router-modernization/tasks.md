@@ -72,7 +72,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-30, AC-8.5_
   - _Design: config.py, Config Schema v2_
 
-- [ ] 1.5 taxonomy.py: scored classifier core
+- [x] 1.5 taxonomy.py: scored classifier core
   - **Do**:
     1. Create `PLUGIN/hooks/router/taxonomy.py`: `CLASSES = ("mechanical","implementation","debugging","architecture","extreme")`, default keyword/pattern lists per design table (v1 haiku/sonnet/opus lists + debugging list).
     2. `score(prompt, cfg)` -> ScoreResult (scores per class, top, second, margin, word_count); keyword/pattern hit = +2; mechanical score zeroed when word_count > `mechanical_max_words`; text signal cap +6 per class.
