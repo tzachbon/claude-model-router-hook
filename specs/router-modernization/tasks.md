@@ -271,7 +271,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-24, FR-26, AC-7.2, AC-7.6, NFR-7_
   - _Design: Confidence and decision ladder_
 
-- [ ] 2.11 [VERIFY] Quality checkpoint: compile + unit + integration
+- [x] 2.11 [VERIFY] Quality checkpoint: compile + unit + integration
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py plugins/claude-model-router-hook/hooks/*.py && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
