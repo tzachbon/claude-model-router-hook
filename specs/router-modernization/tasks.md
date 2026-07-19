@@ -169,7 +169,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-21, FR-22, AC-6.3, AC-6.5_
   - _Design: Capability gates and effort floors_
 
-- [ ] 2.5 config: v1 detection + in-memory migration
+- [x] 2.5 config: v1 detection + in-memory migration
   - **Do**:
     1. Implement `detect_version(raw)`: `version==2` -> 2; version absent AND any of `{opus, sonnet, haiku, thresholds}` present -> 1; else 2 (defaults).
     2. Implement `migrate_v1(raw)` pure function per design mapping table (opus->classes.architecture, sonnet->classes.implementation, haiku->classes.mechanical, threshold key renames, implicit `apply_mode: warn`). Never writes files (AC-8.2).

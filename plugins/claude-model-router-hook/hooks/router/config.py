@@ -85,9 +85,64 @@ def _read_json(path):
         return {}
 
 
+_V1_TIER_TO_CLASS = {
+    "opus": "architecture",
+    "sonnet": "implementation",
+    "haiku": "mechanical",
+}
+
+_V1_THRESHOLD_RENAMES = {
+    "opus_word_count": "long_prompt_words",
+    "opus_question_word_count": "question_words",
+    "haiku_max_word_count": "mechanical_max_words",
+}
+
+
 def detect_version(raw):
-    """Version detection stub: full v1 detection lands in Phase 2."""
+    """Structural version detection (FR-31).
+
+    version == 2 -> 2; version absent with any v1 top-level key present -> 1;
+    otherwise 2 (defaults).
+    """
+    if raw.get("version") == 2:
+        return 2
+    if "version" not in raw and any(
+        key in raw for key in ("opus", "sonnet", "haiku", "thresholds")
+    ):
+        return 1
     return 2
+
+
+def migrate_v1(raw):
+    """Migrate a v1-shaped config dict to v2 shape, in memory only (AC-8.2).
+
+    Pure function: never writes files. Tier configs map to classes
+    (opus->architecture, sonnet->implementation, haiku->mechanical),
+    threshold keys are renamed, and v1's implicit warn-only behavior
+    becomes an explicit apply_mode.
+    """
+    migrated = {"version": 2, "apply_mode": "warn"}
+
+    classes = {}
+    for tier, class_name in _V1_TIER_TO_CLASS.items():
+        tier_config = raw.get(tier)
+        if isinstance(tier_config, dict):
+            classes[class_name] = {
+                key: value
+                for key, value in tier_config.items()
+                if key in ("mode", "keywords", "patterns", "remove_keywords", "remove_patterns")
+            }
+    if classes:
+        migrated["classes"] = classes
+
+    thresholds = raw.get("thresholds")
+    if isinstance(thresholds, dict):
+        migrated["thresholds"] = {
+            _V1_THRESHOLD_RENAMES.get(key, key): value
+            for key, value in thresholds.items()
+        }
+
+    return migrated
 
 
 def load_config(global_path=None, cwd=None):
