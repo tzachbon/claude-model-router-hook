@@ -525,7 +525,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(agents): assert every default target has a shipped variant`
   - _Requirements: FR-16, AC-4.2_
 
-- [ ] 3.10 [VERIFY] Quality checkpoint: unit + integration
+- [x] 3.10 [VERIFY] Quality checkpoint: unit + integration
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
