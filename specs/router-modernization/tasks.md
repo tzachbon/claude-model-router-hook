@@ -344,7 +344,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.19 pre_tool_use.py: respect, modes, fable gate, env warning
+- [x] 2.19 pre_tool_use.py: respect, modes, fable gate, env warning
   - **Do**:
     1. Explicit caller `model` in tool_input -> NO injection (respect, locked decision); if router disagrees, `systemMessage` one-liner advisory only.
     2. `subagent_enforcement: advisory` -> systemMessage only, no updatedInput; fable decision with `allow_fable_autoswitch: false` -> degrade to advisory systemMessage (AC-3.3).

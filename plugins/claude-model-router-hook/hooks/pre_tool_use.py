@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from router import config, hookio, policy, taxonomy  # noqa: E402
+from router.ladder import detect_tier  # noqa: E402
 
 PLUGIN_PREFIX = "claude-model-router-hook:"
 GENERIC_TYPES = ("general-purpose", "default", "claude")
@@ -24,6 +25,19 @@ VARIANTS = {
     ("opus", "high"): "routed-opus-high",
     ("fable", "high"): "routed-fable-high",
 }
+
+
+def _env_model_warning(decision_model):
+    """A-4: CLAUDE_CODE_SUBAGENT_MODEL outranks injected model; warn on mismatch."""
+    env_model = os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL")
+    if not env_model:
+        return None
+    if (detect_tier(env_model) or env_model) == decision_model:
+        return None
+    return (
+        f"Warning: CLAUDE_CODE_SUBAGENT_MODEL={env_model} overrides the "
+        f"router's model choice ({decision_model})."
+    )
 
 
 def _global_config_path():
@@ -57,9 +71,6 @@ def main():
     ):
         sys.exit(0)  # idempotency guard: already rewritten
 
-    if tool_input.get("model"):
-        sys.exit(0)  # explicit caller model: respect it (advisory in 2.18)
-
     cfg = config.load_config(global_path=_global_config_path())
     enforcement = cfg.get("subagent_enforcement", "on")
     if enforcement == "off":
@@ -72,6 +83,26 @@ def main():
         sys.exit(0)  # abstain: pass through (AC-4.3)
 
     decision = policy.apply_gates(prompt, policy.target_for_class(klass, cfg), cfg)
+
+    explicit = tool_input.get("model")
+    if explicit:
+        # Explicit caller model: NO injection, respect it (locked decision 4).
+        if (
+            isinstance(explicit, str)
+            and (detect_tier(explicit) or explicit) != decision.model
+        ):
+            messages = [
+                f"Model router: caller pinned model {explicit}; router would "
+                f"pick {decision.model} ({decision.klass})."
+            ]
+            warning = _env_model_warning(decision.model)
+            if warning:
+                messages.append(warning)
+            hookio.log(
+                "SUBAGENT-ADVISORY", prompt, klass=decision.klass, model=decision.model
+            )
+            hookio.emit_pretooluse(system_message=" ".join(messages))
+        sys.exit(0)
 
     if decision.model == "fable" and not cfg.get("allow_fable_autoswitch"):
         # Fable gated off: advisory only, no rewrite (design "fable decision").
@@ -97,13 +128,28 @@ def main():
         updated["subagent_type"] = PLUGIN_PREFIX + variant
 
     if enforcement == "advisory":
-        hookio.emit_pretooluse(
-            system_message=(
-                f"Model router: would route this subagent to "
-                f"{decision.model} ({decision.klass})."
-            )
-        )
+        # Advisory mode: systemMessage only, never updatedInput (AC-3.3 shape).
+        messages = [
+            f"Model router: would route this subagent to "
+            f"{decision.model} ({decision.klass})."
+        ]
+        warning = _env_model_warning(decision.model)
+        if warning:
+            messages.append(warning)
+        hookio.emit_pretooluse(system_message=" ".join(messages))
         sys.exit(0)
+
+    messages = []
+    if not (generic and variant) and decision.effort:
+        # No matching shipped variant (custom type or overridden target):
+        # model-only injection, effort stays advisory (AC-4.2, AC-5.2).
+        messages.append(
+            f"Model router: injected model {decision.model}; no matching "
+            f"routed variant, so effort {decision.effort} is advisory only."
+        )
+    warning = _env_model_warning(decision.model)
+    if warning:
+        messages.append(warning)
 
     hookio.log(
         "SUBAGENT-REWRITE" if generic and variant else "SUBAGENT-MODEL",
@@ -112,7 +158,10 @@ def main():
         model=decision.model,
         subagent_type=updated.get("subagent_type", ""),
     )
-    hookio.emit_pretooluse(updated_input=updated)
+    hookio.emit_pretooluse(
+        updated_input=updated,
+        system_message=" ".join(messages) if messages else None,
+    )
     sys.exit(0)
 
 
