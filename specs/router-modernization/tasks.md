@@ -277,7 +277,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.12 advisory.py: canonical taxonomy text
+- [x] 2.12 advisory.py: canonical taxonomy text
   - **Do**:
     1. Create `PLUGIN/hooks/router/advisory.py`: `ADVISORY_MD` constant, the single canonical taxonomy/advisory markdown table (classes, targets, when to use), FR-42.
     2. `render_session_context(current_model)` returning SessionStart context text embedding ADVISORY_MD.
