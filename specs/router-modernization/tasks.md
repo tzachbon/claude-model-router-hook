@@ -140,7 +140,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-7, FR-23, AC-7.1_
   - _Design: Taxonomy Design signals table_
 
-- [ ] 2.2 taxonomy: extreme escalation
+- [x] 2.2 taxonomy: extreme escalation
   - **Do**:
     1. Add extreme markers (multi-system, migration plan, across the entire codebase, long-horizon, RFC/design doc, epic, rewrite the platform), each +1, cap +3.
     2. Evaluate only when architecture is top class; escalate architecture -> extreme when extremity >= 2.
