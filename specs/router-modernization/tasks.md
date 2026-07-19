@@ -470,7 +470,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All green
   - **Commit**: `chore(tests): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 3.4 test_router.py: taxonomy tests
+- [x] 3.4 test_router.py: taxonomy tests
   - **Do**:
     1. Scoring/margin tests per class; signal caps (degenerate 500-word prompt, keyword-stuffed trivia cannot force top tier, FR-7); extreme escalation only from architecture top.
     2. Abstain: empty/whitespace, low-signal prompt; determinism: same prompt + config -> identical result across 3 runs (NFR-10); mechanical zeroed above `mechanical_max_words`.

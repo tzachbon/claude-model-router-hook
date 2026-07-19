@@ -31,6 +31,23 @@ from router.config import (  # noqa: E402
     load_config,
     v1_hint_due,
 )
+from router import taxonomy  # noqa: E402
+from router.taxonomy import (  # noqa: E402
+    CLASSES,
+    TEXT_CAP,
+    EXTREME_CAP,
+    EXTREME_ESCALATION_MIN,
+    score,
+    classify_heuristic,
+)
+
+
+def _det_cfg():
+    """DEFAULTS copy with CLI fallback off: fully deterministic, offline."""
+    import copy
+    cfg = copy.deepcopy(DEFAULTS)
+    cfg["classifier"]["cli_fallback"] = False
+    return cfg
 
 
 # ── Tests: Decision invariants ─────────────────────────────────────────────
@@ -362,6 +379,184 @@ class TestLoadConfigSafety(unittest.TestCase):
         self.assertEqual(os.path.getmtime(v1_path), before_mtime)
         with open(v1_path) as f:
             self.assertEqual(f.read(), before_content)
+
+
+# ── Tests: taxonomy per-class scoring and margin (design table) ────────────
+
+class TestTaxonomyScoring(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_mechanical_prompt_tops_mechanical(self):
+        result = score("git commit all my changes and push to origin", self.cfg)
+        self.assertEqual(result.top, "mechanical")
+        self.assertGreater(result.scores["mechanical"], 0)
+
+    def test_implementation_prompt_tops_implementation(self):
+        result = score("build a new React component for the login page", self.cfg)
+        self.assertEqual(result.top, "implementation")
+
+    def test_debugging_prompt_tops_debugging(self):
+        result = score("debug why the test is failing with a traceback", self.cfg)
+        self.assertEqual(result.top, "debugging")
+
+    def test_architecture_prompt_tops_architecture(self):
+        result = score(
+            "architect a strategy to redesign the auth system tradeoff analysis deep dive",
+            self.cfg,
+        )
+        self.assertEqual(result.top, "architecture")
+
+    def test_margin_is_top_minus_second(self):
+        result = score("git commit all my changes and push to origin", self.cfg)
+        self.assertEqual(
+            result.margin, result.scores[result.top] - result.scores[result.second]
+        )
+        self.assertGreaterEqual(result.margin, 0)
+
+
+# ── Tests: signal caps, no single signal forces a tier (FR-7) ──────────────
+
+class TestSignalCaps(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_keyword_stuffing_capped_at_text_cap(self):
+        """Many implementation keywords cannot exceed the per-class text cap."""
+        stuffed = (
+            "build implement create fix write component service page deploy "
+            "test refactor style css route api function"
+        )
+        result = score(stuffed, self.cfg)
+        self.assertEqual(result.scores["implementation"], TEXT_CAP)
+
+    def test_keyword_stuffing_cannot_force_extreme(self):
+        """Stuffing non-architecture keywords never reaches the top (extreme) tier."""
+        stuffed = (
+            "build implement create fix write component service page deploy test"
+        )
+        result = score(stuffed, self.cfg)
+        self.assertEqual(result.scores["extreme"], 0.0)
+        self.assertNotEqual(result.top, "extreme")
+
+    def test_degenerate_long_prompt_length_capped(self):
+        """A 500-word content-free prompt: length signal capped, extreme stays 0."""
+        result = score("word " * 500, self.cfg)
+        self.assertLessEqual(result.scores["architecture"], 2.0)
+        self.assertEqual(result.scores["extreme"], 0.0)
+
+    def test_architecture_text_capped(self):
+        stuffed = (
+            "architect architecture evaluate tradeoff strategy strategic "
+            "redesign analyze analysis rethink high-stakes"
+        )
+        result = score(stuffed, self.cfg)
+        self.assertEqual(result.scores["architecture"], TEXT_CAP)
+
+
+# ── Tests: extreme escalation only from architecture top ───────────────────
+
+class TestExtremeEscalation(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_escalates_when_architecture_top(self):
+        prompt = (
+            "migration plan across the entire codebase multi-system rewrite the "
+            "platform long-horizon architecture strategy redesign"
+        )
+        result = score(prompt, self.cfg)
+        self.assertEqual(result.top, "extreme")
+        self.assertGreater(result.scores["extreme"], result.scores["architecture"])
+
+    def test_no_escalation_when_architecture_not_top(self):
+        """Extreme markers present but implementation dominates: extreme stays 0."""
+        prompt = (
+            "build implement create fix write component migration plan "
+            "multi-system epic"
+        )
+        result = score(prompt, self.cfg)
+        self.assertEqual(result.top, "implementation")
+        self.assertEqual(result.scores["extreme"], 0.0)
+
+    def test_single_extreme_marker_below_min_no_escalation(self):
+        """Architecture top with fewer than EXTREME_ESCALATION_MIN markers: no bump."""
+        self.assertGreaterEqual(EXTREME_ESCALATION_MIN, 2)
+        prompt = "architect a redesign strategy tradeoff analysis with a migration plan"
+        result = score(prompt, self.cfg)
+        self.assertEqual(result.top, "architecture")
+        self.assertEqual(result.scores["extreme"], 0.0)
+
+    def test_extreme_bump_capped(self):
+        prompt = (
+            "migration plan across the entire codebase multi-system rewrite the "
+            "platform long-horizon epic architecture strategy redesign"
+        )
+        result = score(prompt, self.cfg)
+        bump = result.scores["extreme"] - result.scores["architecture"]
+        self.assertLessEqual(bump, EXTREME_CAP)
+
+
+# ── Tests: abstain and mechanical length gate (FR-24, AC-7.1) ──────────────
+
+class TestTaxonomyAbstain(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_empty_prompt_abstains(self):
+        klass, result = classify_heuristic("", self.cfg)
+        self.assertIsNone(klass)
+        self.assertEqual(result.word_count, 0)
+
+    def test_whitespace_prompt_abstains(self):
+        klass, result = classify_heuristic("   \n\t  ", self.cfg)
+        self.assertIsNone(klass)
+        self.assertEqual(result.word_count, 0)
+
+    def test_none_prompt_abstains(self):
+        klass, _ = classify_heuristic(None, self.cfg)
+        self.assertIsNone(klass)
+
+    def test_low_signal_prompt_abstains(self):
+        """A greeting with no class signal falls below the low-confidence floor."""
+        klass, _ = classify_heuristic("hello there friend", self.cfg)
+        self.assertIsNone(klass)
+
+    def test_mechanical_zeroed_above_max_words(self):
+        """A git op padded past mechanical_max_words loses its mechanical score."""
+        max_words = self.cfg["thresholds"]["mechanical_max_words"]
+        prompt = "git commit " + ("extra " * (max_words + 12))
+        result = score(prompt, self.cfg)
+        self.assertGreater(result.word_count, max_words)
+        self.assertEqual(result.scores["mechanical"], 0.0)
+
+
+# ── Tests: determinism, same prompt + config -> identical (NFR-10) ─────────
+
+class TestTaxonomyDeterminism(unittest.TestCase):
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_score_identical_across_three_runs(self):
+        prompt = "architect a strategy to redesign the auth system tradeoff analysis"
+        runs = [score(prompt, self.cfg) for _ in range(3)]
+        self.assertEqual(runs[0], runs[1])
+        self.assertEqual(runs[1], runs[2])
+
+    def test_classify_identical_across_three_runs(self):
+        prompt = "debug why the integration test is failing with a stack trace"
+        results = [classify_heuristic(prompt, self.cfg)[0] for _ in range(3)]
+        self.assertEqual(len(set(results)), 1)
+
+    def test_classes_tuple_matches_module_scores(self):
+        result = score("build a service", self.cfg)
+        self.assertEqual(set(result.scores), set(CLASSES))
+        self.assertEqual(set(CLASSES), set(taxonomy.DEFAULT_KEYWORDS))
 
 
 if __name__ == "__main__":
