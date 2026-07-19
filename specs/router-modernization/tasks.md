@@ -325,7 +325,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-16, AC-4.2_
   - _Design: Plugin-Shipped Agent Variants_
 
-- [ ] 2.17 pre_tool_use.py: core enforcement
+- [x] 2.17 pre_tool_use.py: core enforcement
   - **Do**:
     1. Create `PLUGIN/hooks/pre_tool_use.py`: fail_open-wrapped; exit 0 on child guard, `subagent_enforcement: off`, idempotency (`subagent_type` already `claude-model-router-hook:routed-*`), missing `tool_input.prompt` (FR-18).
     2. Classify `tool_input.prompt` via `target_for_class` + gates; abstain/error -> exit 0 pass-through (AC-4.3, AC-4.4).
