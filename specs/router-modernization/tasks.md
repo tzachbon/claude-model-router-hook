@@ -480,7 +480,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(taxonomy): cover scoring, caps, escalation, abstain, determinism`
   - _Requirements: FR-7, FR-19, FR-23, FR-24, AC-7.1, NFR-10_
 
-- [ ] 3.5 test_router.py: policy tests
+- [x] 3.5 test_router.py: policy tests
   - **Do**:
     1. Assert all 20 main-prompt matrix cells (5 classes x 4 current tiers) incl. stay cells and xhigh cells; haiku decisions never carry effort anywhere.
     2. Downroute guard (margin < downroute_margin blocks tier lowering); capability gates (handoff never haiku, AC-6.3); debugging and data-handling effort floors; `effort_warn_distance` match logic (distance 1 silent, distance 2 warns).
