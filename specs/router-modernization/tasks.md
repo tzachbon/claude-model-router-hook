@@ -516,7 +516,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(cli): cover cache hit, eviction, corruption, privacy`
   - _Requirements: FR-28, AC-7.5, NFR-5, NFR-9_
 
-- [ ] 3.9 test_router.py: variant coverage test
+- [x] 3.9 test_router.py: variant coverage test
   - **Do**:
     1. Add test: for every DEFAULT class target in `config.DEFAULTS`, a matching `PLUGIN/agents/routed-*.md` file exists with frontmatter `model`/`effort` equal to the target (haiku variant asserted to have NO effort key) (amended AC-4.2).
   - **Files**: tests/test_router.py

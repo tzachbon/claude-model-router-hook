@@ -959,5 +959,55 @@ class TestCliFallbackCache(unittest.TestCase):
         self.assertEqual(entry["c"], "implementation")
 
 
+AGENTS_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "agents"
+)
+
+
+def _parse_frontmatter(path):
+    """Parse the leading --- YAML frontmatter block into a flat dict."""
+    fields = {}
+    with open(path) as fh:
+        lines = fh.read().splitlines()
+    if not lines or lines[0].strip() != "---":
+        return fields
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" in line:
+            key, value = line.split(":", 1)
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+class TestVariantCoverage(unittest.TestCase):
+    """Every default class target has a shipped routed-* variant (AC-4.2)."""
+
+    def _variant_name(self, model, effort):
+        """Same convention pre_tool_use.py uses: routed-<model>[-<effort>]."""
+        return "routed-" + model if effort is None else f"routed-{model}-{effort}"
+
+    def test_every_default_target_has_matching_variant(self):
+        classes = DEFAULTS["classes"]
+        self.assertEqual(len(classes), 5)
+        for class_name, class_cfg in classes.items():
+            target = class_cfg["target"]
+            model = target["model"]
+            effort = target.get("effort")
+            variant = self._variant_name(model, effort)
+            path = os.path.join(AGENTS_DIR, variant + ".md")
+            self.assertTrue(
+                os.path.exists(path),
+                f"{class_name} target -> missing variant {variant}.md",
+            )
+            fm = _parse_frontmatter(path)
+            self.assertEqual(fm.get("name"), variant)
+            self.assertEqual(fm.get("model"), model)
+            if effort is None:
+                self.assertNotIn("effort", fm)
+            else:
+                self.assertEqual(fm.get("effort"), effort)
+
+
 if __name__ == "__main__":
     unittest.main()
