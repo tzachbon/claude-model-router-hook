@@ -247,7 +247,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-28, AC-7.5, NFR-5, NFR-9_
   - _Design: CLI Fallback Design cache_
 
-- [ ] 2.10 Wire CLI fallback into classification path
+- [x] 2.10 Wire CLI fallback into classification path
   - **Do**:
     1. Add `classify(prompt, cfg, data_dir)` orchestrator (in taxonomy.py): heuristic first; if below confidence AND `classifier.cli_fallback` true -> cache -> `classify_cli` tiebreak; on None fall back to heuristic low-confidence decision (FR-24, FR-27).
     2. `classifier.cli_fallback: false` -> pure heuristics, no subprocess import side effects (AC-7.6, NFR-7).

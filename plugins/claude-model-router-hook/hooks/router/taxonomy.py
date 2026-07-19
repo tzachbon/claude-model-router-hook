@@ -153,3 +153,33 @@ def classify_heuristic(prompt, cfg):
     if top_score >= 2:  # low-confidence
         return result.top, result
     return None, result
+
+
+def classify(prompt, cfg, data_dir):
+    """Tiered classify (FR-24, FR-26): confident heuristic final, else CLI tiebreak.
+
+    Decision ladder: confident heuristic -> no CLI; below threshold with
+    classifier.cli_fallback enabled -> cache -> CLI tiebreak; CLI failure or
+    fallback disabled -> heuristic low-confidence decision (fail-open).
+    """
+    klass, result = classify_heuristic(prompt, cfg)
+    if result.word_count == 0:  # empty/whitespace prompt: abstain, no CLI
+        return None, result
+
+    confident_margin = cfg.get("thresholds", {}).get("confident_margin", 3)
+    if result.margin >= confident_margin and result.scores[result.top] >= 3:
+        return klass, result  # confident: final, no CLI
+
+    classifier_cfg = cfg.get("classifier") or {}
+    if not classifier_cfg.get("cli_fallback", True):
+        return klass, result  # pure heuristics (AC-7.6, NFR-7)
+
+    # Lazy import: no subprocess machinery loaded when fallback disabled.
+    from . import cli_fallback
+
+    reply = cli_fallback.classify_cli(prompt, cfg, data_dir)
+    if reply == "abstain":
+        return None, result
+    if reply in CLASSES:
+        return reply, result
+    return klass, result  # CLI failure: heuristic decision applies (AC-7.4)

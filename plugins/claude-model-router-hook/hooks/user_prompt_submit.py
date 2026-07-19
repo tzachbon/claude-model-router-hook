@@ -5,6 +5,7 @@ Thin wiring only; all logic lives in the router package. Exit 0 = allow,
 exit 2 = warn (stderr suggestion, prompt blocked for resend).
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -30,7 +31,9 @@ def main():
         sys.exit(0)  # unknown/unset session model: fail-open (v1 parity)
 
     cfg = config.load_config()
-    klass, score = taxonomy.classify_heuristic(prompt, cfg)
+    klass, score = taxonomy.classify(
+        prompt, cfg, os.environ.get("CLAUDE_PLUGIN_DATA")
+    )
     if klass is None:
         sys.exit(0)  # abstain
 
