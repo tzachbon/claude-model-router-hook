@@ -490,7 +490,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(policy): cover full matrix, downroute guard, gates, floors`
   - _Requirements: FR-4, FR-5, FR-20, FR-21, FR-22, AC-2.1, AC-6.3, AC-6.5_
 
-- [ ] 3.6 [VERIFY] Quality checkpoint: unit + integration
+- [x] 3.6 [VERIFY] Quality checkpoint: unit + integration
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
