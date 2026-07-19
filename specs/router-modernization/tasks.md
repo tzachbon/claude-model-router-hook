@@ -375,7 +375,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.22 user_prompt_submit: autoswitch branch + v1 hint
+- [x] 2.22 user_prompt_submit: autoswitch branch + v1 hint
   - **Do**:
     1. Add autoswitch branch (`apply_mode: "autoswitch"`): fable decision with `allow_fable_autoswitch: false` -> behave as warn (FR-11); else `write_settings`, on failure degrade to warn; exit 2 message per design ("default updated for new sessions; /model X to apply now"; never claims live switch, AC-3.2); surface precedence-mask caveat when detected.
     2. Wire v1 hint: when `v1_hint_due` and v1 config detected, append one-time hint to warn stderr (exit-2 path) or emit systemMessage (exit-0 path); write marker file.
