@@ -288,7 +288,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-17, FR-42, AC-11.1_
   - _Design: advisory.py_
 
-- [ ] 2.13 session_init.py entrypoint
+- [x] 2.13 session_init.py entrypoint
   - **Do**:
     1. Create `PLUGIN/hooks/session_init.py`: fail_open-wrapped; child guard exit 0; read current model; emit `hookSpecificOutput.additionalContext` from `render_session_context` as JSON on stdout.
   - **Files**: plugins/claude-model-router-hook/hooks/session_init.py
