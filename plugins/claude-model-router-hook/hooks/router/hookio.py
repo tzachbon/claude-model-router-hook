@@ -7,6 +7,7 @@ import functools
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime
 
 LOG_PATH = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
@@ -71,6 +72,69 @@ def current_model_effort():
         if model and effort:
             break
     return model, effort or "high"
+
+
+def write_settings(model_with_suffix, effort):
+    """Atomically write model/effortLevel to ~/.claude/settings.json (FR-9, FR-10).
+
+    Unparseable settings -> return False (degrade to warn, never clobber).
+    Missing file -> treated as empty dict and created. `max` clamps to `xhigh`
+    (settings rejects max). effort None (haiku decision) writes model only and
+    removes any stale effortLevel. All other keys preserved.
+    """
+    path = os.path.expanduser("~/.claude/settings.json")
+    try:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                settings = json.load(f)
+            if not isinstance(settings, dict):
+                return False
+        else:
+            settings = {}
+    except Exception:
+        return False
+
+    settings["model"] = model_with_suffix
+    if effort is None:
+        settings.pop("effortLevel", None)
+    else:
+        settings["effortLevel"] = "xhigh" if effort == "max" else effort
+
+    try:
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".settings-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(settings, f, indent=2)
+                f.write("\n")
+            os.replace(tmp_path, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    except Exception:
+        return False
+    return True
+
+
+def settings_masked():
+    """True when a higher-precedence source would mask the ~/.claude write (A-6).
+
+    ANTHROPIC_MODEL env or a project settings file defining `model` outranks
+    ~/.claude/settings.json; caller surfaces a caveat in the autoswitch message.
+    """
+    if os.environ.get("ANTHROPIC_MODEL"):
+        return True
+    for path in (
+        os.path.join(".claude", "settings.local.json"),
+        os.path.join(".claude", "settings.json"),
+    ):
+        if isinstance(_read_settings(path).get("model"), str):
+            return True
+    return False
 
 
 def log(action, prompt, **kv):

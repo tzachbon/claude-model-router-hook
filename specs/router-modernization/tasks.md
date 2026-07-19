@@ -357,7 +357,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-11, FR-30, AC-3.3, AC-5.1, AC-5.2_
   - _Design: PreToolUse Contract Details, A-4_
 
-- [ ] 2.20 hookio: atomic settings writer for autoswitch
+- [x] 2.20 hookio: atomic settings writer for autoswitch
   - **Do**:
     1. Add `write_settings(model_with_suffix, effort)` to hookio.py: read `~/.claude/settings.json`, unparseable -> return False (degrade to warn, never clobber).
     2. Write `model` (alias + preserved suffix) and `effortLevel` clamped to xhigh (`max` -> `xhigh`; haiku decision writes model only, no effortLevel); preserve all other keys; tempfile + `os.replace` atomic.
