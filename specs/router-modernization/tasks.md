@@ -84,7 +84,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-19, FR-23, FR-24, AC-7.1, AC-7.2_
   - _Design: taxonomy.py, Taxonomy Design_
 
-- [ ] 1.6 policy.py: effort-first mapping
+- [x] 1.6 policy.py: effort-first mapping
   - **Do**:
     1. Create `PLUGIN/hooks/router/policy.py`: `target_for_class(klass, cfg)` -> Decision from `classes.<name>.target` (haiku target has NO effort).
     2. `main_prompt_decision(klass, current_model, current_effort, cfg, score)` implementing the full 5x4 matrix from design (stay cells, xhigh cells for architecture@opus and extreme@fable, up-routes incl. haiku->sonnet).
