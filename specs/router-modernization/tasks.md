@@ -454,7 +454,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(router): add ladder invariant tests`
   - _Requirements: FR-1, FR-2, FR-3, FR-6, AC-2.4, AC-2.5, AC-10.4_
 
-- [ ] 3.2 test_router.py: config tests
+- [x] 3.2 test_router.py: config tests
   - **Do**:
     1. Add config tests: v1 detection matrix (v1 keys, version 2, empty); full `migrate_v1` mapping table per design; merge semantics (project wins, `$schema` skipped, per-class merge); extend/replace/remove_* via `resolve_list`.
     2. `v1_hint_due` fires once; unparseable file -> defaults (AC-8.5); user file never written by migration (assert mtime/content unchanged).
