@@ -304,7 +304,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.15 [P] Agent variants: haiku, sonnet-medium, sonnet-high
+- [x] 2.15 [P] Agent variants: haiku, sonnet-medium, sonnet-high
   - **Do**:
     1. Create `PLUGIN/agents/routed-haiku.md` (`name: routed-haiku`, `model: haiku`, NO effort key), `routed-sonnet-medium.md` (`model: sonnet`, `effort: medium`), `routed-sonnet-high.md` (`model: sonnet`, `effort: high`).
     2. Identical minimal body ("Complete the delegated task exactly as prompted; return a concise report"); description states router-managed variant.
@@ -315,7 +315,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-16, AC-4.2, AC-2.4_
   - _Design: Plugin-Shipped Agent Variants_
 
-- [ ] 2.16 [P] Agent variants: opus-high, fable-high
+- [x] 2.16 [P] Agent variants: opus-high, fable-high
   - **Do**:
     1. Create `PLUGIN/agents/routed-opus-high.md` (`model: opus`, `effort: high`) and `routed-fable-high.md` (`model: fable`, `effort: high`), same body/description pattern as 2.15.
   - **Files**: plugins/claude-model-router-hook/agents/routed-opus-high.md, plugins/claude-model-router-hook/agents/routed-fable-high.md
