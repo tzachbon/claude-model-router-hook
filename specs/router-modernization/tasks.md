@@ -221,7 +221,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-25, FR-27, AC-7.3, AC-7.4_
   - _Design: CLI Fallback Design_
 
-- [ ] 2.9 cli_fallback: hash-keyed cache
+- [x] 2.9 cli_fallback: hash-keyed cache
   - **Do**:
     1. Cache file `${CLAUDE_PLUGIN_DATA}/classifier-cache.json`: key `sha256(taxonomy_rev + prompt).hexdigest()[:32]`, value `{"c": class, "t": epoch}`; hashes + classes only, never prompt text (NFR-5).
     2. Max `cache_max_entries` (1000); on overflow evict oldest 20%; corrupt/unreadable -> discard and rewrite (NFR-9); atomic write via tempfile + `os.replace`.
