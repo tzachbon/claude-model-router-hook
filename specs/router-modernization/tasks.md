@@ -96,7 +96,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-4, FR-5, FR-20, AC-2.1, AC-2.2, AC-2.3_
   - _Design: policy.py, (model, effort) output matrix_
 
-- [ ] 1.7 [VERIFY] Quality checkpoint: compile + unit tests
+- [x] 1.7 [VERIFY] Quality checkpoint: compile + unit tests
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py && python3 -m unittest discover tests -v`
   - **Verify**: Both exit 0
   - **Done when**: Package compiles, existing tests still green
