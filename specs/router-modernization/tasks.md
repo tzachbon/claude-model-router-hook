@@ -59,7 +59,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - **Done when**: Package compiles, existing tests pass
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 1.4 config.py: v2 defaults + load
+- [x] 1.4 config.py: v2 defaults + load
   - **Do**:
     1. Create `PLUGIN/hooks/router/config.py` with `DEFAULTS` dict matching the v2 schema in design (apply_mode warn, allow_fable_autoswitch false, subagent_enforcement on, classifier block, thresholds block, classes with targets, capability_gates, effort_floors).
     2. `load_config(global_path=None, cwd=None)`: read global + project JSON, unparseable file -> `{}` (fail-open, AC-8.5), shallow-merge onto DEFAULTS (full v1 merge semantics come in Phase 2).
