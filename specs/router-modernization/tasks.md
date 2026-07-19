@@ -114,7 +114,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-8, AC-1.1, AC-1.2, AC-1.3, AC-9.1, AC-9.2, AC-9.3_
   - _Design: Data flow UserPromptSubmit, Entrypoints_
 
-- [ ] 1.9 POC Checkpoint
+- [x] 1.9 POC Checkpoint
   - **Do**:
     1. Run the canned warn case from 1.8 (sonnet session + architecture prompt -> exit 2, stderr has `/model` and `/effort`).
     2. Run fail-open cases: `echo 'not json' | python3 ...` -> exit 0; `~prefixed` prompt -> exit 0; `CLAUDE_MODEL_ROUTER_CHILD=1` -> exit 0.
