@@ -40,7 +40,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
   - _Requirements: FR-1, FR-2, FR-3, FR-6, AC-2.4, AC-2.5_
   - _Design: ladder.py_
 
-- [ ] 1.2 Create hookio.py
+- [x] 1.2 Create hookio.py
   - **Do**:
     1. Create `PLUGIN/hooks/router/hookio.py`: `fail_open(fn)` decorator (any exception -> `sys.exit(0)`), `read_event()` (malformed stdin -> exit 0).
     2. `current_model_effort()` -> (model_str, effort): precedence env `ANTHROPIC_MODEL` > `.claude/settings.local.json` > `.claude/settings.json` > `~/.claude/settings.json`; effort from `effortLevel` else `"high"` (A-2/A-6).
