@@ -464,7 +464,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(config): cover v1 detection, migration, merge semantics`
   - _Requirements: FR-31, FR-32, FR-33, AC-8.1..AC-8.5_
 
-- [ ] 3.3 [VERIFY] Quality checkpoint: unit + integration
+- [x] 3.3 [VERIFY] Quality checkpoint: unit + integration
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
