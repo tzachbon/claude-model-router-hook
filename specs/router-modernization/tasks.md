@@ -128,7 +128,7 @@ Minimal vertical slice: ladder + minimal taxonomy/policy + UserPromptSubmit entr
 
 Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, agent variants, PreToolUse enforcement, autoswitch, hooks.json rewire, v1 deletion.
 
-- [ ] 2.1 taxonomy: structural and length signals with caps
+- [x] 2.1 taxonomy: structural and length signals with caps
   - **Do**:
     1. Add structural signals per design table: code fence +1 (implementation), error/traceback block +2 (debugging), short imperative <=12 words +1 (mechanical).
     2. Add length signals: word_count >= `long_prompt_words` +1, >= 2x +2 (architecture); `?` with word_count >= `question_words` +1 (architecture).
