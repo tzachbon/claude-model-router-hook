@@ -2,7 +2,7 @@
 
 import collections
 
-from .config import safe_regex_match
+from .config import resolve_list, safe_regex_match
 
 CLASSES = ("mechanical", "implementation", "debugging", "architecture", "extreme")
 
@@ -63,22 +63,10 @@ ScoreResult = collections.namedtuple(
 def _resolve_lists(klass, cfg):
     """Merge default keyword/pattern lists with config (extend/replace/remove)."""
     class_cfg = cfg.get("classes", {}).get(klass, {})
-    if not isinstance(class_cfg, dict):
-        class_cfg = {}
-    resolved = {}
-    for field, defaults in (
-        ("keywords", DEFAULT_KEYWORDS[klass]),
-        ("patterns", DEFAULT_PATTERNS[klass]),
-    ):
-        extra = class_cfg.get(field) or []
-        if class_cfg.get("mode") == "replace":
-            items = list(extra)
-        else:
-            items = list(defaults) + [x for x in extra if x not in defaults]
-            removed = set(class_cfg.get("remove_" + field) or [])
-            items = [x for x in items if x not in removed]
-        resolved[field] = items
-    return resolved["keywords"], resolved["patterns"]
+    return (
+        resolve_list(class_cfg, "keywords", DEFAULT_KEYWORDS[klass]),
+        resolve_list(class_cfg, "patterns", DEFAULT_PATTERNS[klass]),
+    )
 
 
 def _text_score(prompt_lower, keywords, patterns, per_hit=2, cap=TEXT_CAP):

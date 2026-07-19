@@ -180,7 +180,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-31, AC-8.1, AC-8.2_
   - _Design: v1 detection + in-memory migration_
 
-- [ ] 2.6 config: layered merge, resolve_list, v1 hint marker
+- [x] 2.6 config: layered merge, resolve_list, v1 hint marker
   - **Do**:
     1. Implement `merge(base, overlay)` with v1 semantics (per-key, dict spread, `$schema` skipped, classes merged per class) and `resolve_list(class_cfg, field, defaults)` preserving v1 extend/replace/remove_* behavior.
     2. Wire `load_config` full path: each file version-detected and migrated independently, then merged (project wins, AC-8.4).

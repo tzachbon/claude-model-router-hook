@@ -145,8 +145,53 @@ def migrate_v1(raw):
     return migrated
 
 
+def merge(base, overlay):
+    """Merge overlay onto base with v1 semantics (FR-32, AC-8.4).
+
+    Per-key override; dicts merged with a shallow spread; "$schema" skipped.
+    "classes" is merged one level deeper so each class merges per class.
+    Returns a new dict; inputs are not mutated.
+    """
+    result = copy.deepcopy(base)
+    for key, value in overlay.items():
+        if key == "$schema":
+            continue
+        if (
+            key == "classes"
+            and isinstance(value, dict)
+            and isinstance(result.get(key), dict)
+        ):
+            merged_classes = dict(result[key])
+            for name, class_cfg in value.items():
+                if isinstance(class_cfg, dict) and isinstance(
+                    merged_classes.get(name), dict
+                ):
+                    merged_classes[name] = {**merged_classes[name], **class_cfg}
+                else:
+                    merged_classes[name] = class_cfg
+            result[key] = merged_classes
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = {**result[key], **value}
+        else:
+            result[key] = value
+    return result
+
+
+def _load_file_as_v2(path):
+    """Read one config file, detect its version, and migrate v1 to v2 shape."""
+    raw = _read_json(path)
+    if not raw:
+        return {}
+    if detect_version(raw) == 1:
+        return migrate_v1(raw)
+    return raw
+
+
 def load_config(global_path=None, cwd=None):
-    """Load global + project configs, shallow-merged onto DEFAULTS.
+    """Load global + project configs, merged onto DEFAULTS (project wins, AC-8.4).
+
+    Each file is version-detected and migrated independently, then merged
+    with v1 semantics via merge().
 
     Args:
         global_path: Override path for the global config file (for testing).
@@ -160,23 +205,62 @@ def load_config(global_path=None, cwd=None):
     else:
         global_path = pathlib.Path(global_path)
     if global_path.exists():
-        for key, value in _read_json(global_path).items():
-            if key == "$schema":
-                continue
-            config[key] = value
+        config = merge(config, _load_file_as_v2(global_path))
 
     # Project config (walk up from CWD to find .claude/model-router.json)
     search_root = pathlib.Path(cwd) if cwd else pathlib.Path.cwd()
     for parent in [search_root, *search_root.parents]:
         project_path = parent / ".claude" / "model-router.json"
         if project_path.exists():
-            for key, value in _read_json(project_path).items():
-                if key == "$schema":
-                    continue
-                config[key] = value
+            config = merge(config, _load_file_as_v2(project_path))
             break
 
     return config
+
+
+def resolve_list(class_cfg, field, defaults):
+    """Resolve final keyword/pattern list for a class (v1 semantics, FR-33).
+
+    mode "replace": use the class list as-is. Otherwise extend defaults with
+    the class list, then drop entries named in remove_<field>.
+    """
+    if not isinstance(class_cfg, dict):
+        class_cfg = {}
+    mode = class_cfg.get("mode", "extend")
+
+    if mode == "replace":
+        return list(class_cfg.get(field) or [])
+
+    # Extend mode
+    result = list(defaults)
+    result.extend(class_cfg.get(field) or [])
+
+    # Remove specific entries
+    for item in class_cfg.get("remove_" + field) or []:
+        if item in result:
+            result.remove(item)
+
+    return result
+
+
+def v1_hint_due(data_dir):
+    """One-time v1 upgrade hint gate (AC-8.3).
+
+    Returns True exactly once per data_dir, writing a marker file
+    <data_dir>/v1-hint-shown. Unwritable or missing data_dir returns
+    False (fail-open); user config files are never touched.
+    """
+    if not data_dir:
+        return False
+    try:
+        marker = pathlib.Path(data_dir) / "v1-hint-shown"
+        if marker.exists():
+            return False
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("")
+        return True
+    except Exception:
+        return False
 
 
 def safe_regex_match(patterns, text):
