@@ -198,7 +198,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - **Done when**: All green
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.8 cli_fallback.py: headless CLI classification
+- [x] 2.8 cli_fallback.py: headless CLI classification
   - **Do**:
     1. Create `PLUGIN/hooks/router/cli_fallback.py` with the design's prompt template (first 1500 chars of user prompt).
     2. `subprocess.run(["claude","-p",template,"--model","haiku"], timeout=cfg cli_timeout_seconds (8), env={**os.environ, "CLAUDE_MODEL_ROUTER_CHILD": "1"})` (recursion guard on child).
