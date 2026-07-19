@@ -338,7 +338,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-12, FR-13, FR-14, FR-15, FR-18, AC-4.1, AC-4.3, AC-4.4, AC-5.1_
   - _Design: Data flow PreToolUse, PreToolUse Contract Details_
 
-- [ ] 2.18 [VERIFY] Quality checkpoint: compile + unit + integration
+- [x] 2.18 [VERIFY] Quality checkpoint: compile + unit + integration
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py plugins/claude-model-router-hook/hooks/*.py && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
