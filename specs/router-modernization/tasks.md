@@ -369,7 +369,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
   - _Requirements: FR-9, FR-10, AC-1.4, AC-3.2_
   - _Design: Autoswitch Design_
 
-- [ ] 2.21 [VERIFY] Quality checkpoint: compile + unit + integration
+- [x] 2.21 [VERIFY] Quality checkpoint: compile + unit + integration
   - **Do**: `python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py plugins/claude-model-router-hook/hooks/*.py && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: All green
