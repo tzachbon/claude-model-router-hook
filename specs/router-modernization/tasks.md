@@ -444,7 +444,7 @@ Full taxonomy signals, config migration, CLI fallback, advisory/SessionStart, ag
 
 Unit tests importing real modules; new integration suites. All scripted tests run with CLI fallback OFF.
 
-- [ ] 3.1 test_router.py: ladder tests
+- [x] 3.1 test_router.py: ladder tests
   - **Do**:
     1. Create `tests/test_router.py` importing `router.ladder`: Decision haiku-with-effort raises; non-ladder model raises; mythos asserted absent from TIERS/MODEL_IDS values and rejected by Decision (FR-2 test-asserted).
     2. Tests for `detect_tier` (all aliases + full IDs + fable substring + unknown -> None), `split_suffix` (`[1m]`, no suffix), `effort_distance`.
