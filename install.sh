@@ -1,26 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOOKS_DIR="$HOME/.claude/hooks"
+# Thin delegation to the single real installer inside the plugin (FR-43).
+# Keeps one script to maintain; zero drift between root and plugin copies.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "Installing claude-model-router-hook hooks to $HOOKS_DIR"
-
-mkdir -p "$HOOKS_DIR"
-
-PLUGIN_HOOKS="$SCRIPT_DIR/plugins/claude-model-router-hook/hooks"
-cp "$PLUGIN_HOOKS/model-router-hook.sh" "$HOOKS_DIR/model-router-hook.sh"
-cp "$PLUGIN_HOOKS/session-init.sh"      "$HOOKS_DIR/session-init.sh"
-cp "$PLUGIN_HOOKS/model_router.py"      "$HOOKS_DIR/model_router.py"
-chmod +x "$HOOKS_DIR/model-router-hook.sh" "$HOOKS_DIR/session-init.sh"
-
-echo ""
-echo "Hooks installed. Add the following to ~/.claude/settings.json:"
-echo ""
-echo "Under 'SessionStart':"
-echo "  { \"type\": \"command\", \"command\": \"$HOOKS_DIR/session-init.sh\", \"timeout\": 2 }"
-echo ""
-echo "Under 'UserPromptSubmit':"
-echo "  { \"type\": \"command\", \"command\": \"$HOOKS_DIR/model-router-hook.sh\", \"timeout\": 2 }"
-echo ""
-echo "Then restart Claude Code."
+exec bash "$SCRIPT_DIR/plugins/claude-model-router-hook/install.sh" "$@"

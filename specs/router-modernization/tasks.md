@@ -684,7 +684,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `docs(slides): correct behavior claims for v2`
   - _Requirements: FR-44, AC-11.3_
 
-- [ ] 4.11 install.sh: plugin update + root delegation
+- [x] 4.11 install.sh: plugin update + root delegation
   - **Do**:
     1. Update `PLUGIN/install.sh`: copy `hooks/router/` package, entrypoints, `agents/` variants, `schema/`; print registration incl. PreToolUse hook and agents dir (FR-46).
     2. Replace root `install.sh` body with delegation to the plugin copy (single real script, FR-43).
