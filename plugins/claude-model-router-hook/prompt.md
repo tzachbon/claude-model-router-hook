@@ -237,6 +237,30 @@ Restart to activate the hooks.
 
 ---
 
+<!-- advisory:start -->
+## Model Tier Rules
+
+These rules apply to YOU and to every sub-agent you spawn.
+
+### Task classes and default targets
+
+| Class | Target model | Effort | When to use |
+|---|---|---|---|
+| mechanical | haiku | none | Git ops, renames, formatting, lint, file moves, version bumps, quick lookups, short imperative tasks. |
+| implementation | sonnet | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
+| debugging | sonnet | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
+| architecture | opus | high | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
+| extreme | fable | high | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
+| abstain | (no routing) | - | Prompt does not clearly match any class; current model and effort pass through unmodified. |
+
+### Sub-agent model selection (MANDATORY)
+
+When calling the Agent tool, set the model parameter to match the task class
+above. Never default all sub-agents to opus. Match the model to the work:
+mechanical work goes to haiku, standard coding to sonnet, deep analysis to
+opus, and only platform-scale efforts to fable.
+<!-- advisory:end -->
+
 ## How It Works
 
 - Every prompt is classified by task complexity (keyword + pattern matching, no API calls).

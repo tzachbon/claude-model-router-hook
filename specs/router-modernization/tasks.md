@@ -642,7 +642,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - _Requirements: FR-42, FR-43, AC-11.1_
   - _Design: advisory.py, sync_docs_
 
-- [ ] 4.7 README v2 rewrite
+- [x] 4.7 README v2 rewrite
   - **Do**:
     1. Update `README.md`: warn default + opt-in autoswitch semantics (new-sessions-only), subagent PreToolUse enforcement, effort-first routing, config v2 + migration note, replace "No API calls" claim with "no API key; optional Claude CLI call" + disable knob (FR-44, NFR-6); remove the embedded stale hook-script variant.
     2. Insert advisory marker block and run `python3 scripts/sync_docs.py` to populate it; document known limitation: multi-hook updatedInput merge order undocumented (A-3).

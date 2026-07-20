@@ -2,7 +2,7 @@
 
 # Claude Model Router Hook
 
-**Automatic model switching for Claude Code. No API calls, no config.**
+**Effort-first model routing for Claude Code. Heuristics-first, opt-in autoswitch.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
@@ -12,31 +12,55 @@
 
 </div>
 
-A Claude Code hook system that classifies every prompt by task complexity and switches your active model automatically. Sub-agent model rules are injected into every session so spawned agents also use the right tier.
+A Claude Code hook system that classifies every prompt into a task class and effort level, then routes it to the right model. Warning is the default; autoswitch is opt-in. Sub-agent routing is enforced at spawn time so spawned agents also land on the right tier.
 
 ## Features
 
-- Classifies prompts by complexity using keyword and pattern matching (zero API calls)
-- Auto-switches `settings.json` and injects a chat message on every tier mismatch
-- Injects sub-agent model-selection rules into every session via `SessionStart`
-- Prefix any prompt with `~` to bypass classification and keep the current model
-- Logs every classification and switch to `~/.claude/hooks/model-router-hook.log`
+- Classifies each prompt into a task class and effort level with a heuristics-first classifier; no API key required
+- Warns by default; opt-in autoswitch writes the recommended model to `~/.claude/settings.json` for new sessions only
+- Enforces sub-agent routing at spawn time via a `PreToolUse` hook, and injects the tier rules into every session via `SessionStart`
+- Effort-first routing with boundary damping, so near-threshold prompts warn instead of flipping the model
+- Prefix any prompt with `~` or `<` to bypass classification and keep the current model
 
 ## How It Works
 
-Two hook scripts run inside Claude Code:
+Three hooks run inside Claude Code, all backed by a shared Python router package:
 
-**`session-init.sh`** (`SessionStart`) injects a `systemMessage` into every session that enforces these sub-agent rules:
+**`user_prompt_submit.py`** (`UserPromptSubmit`) classifies the incoming prompt into a task class and effort level, then compares the recommendation against your current model. In the default `warn` mode it injects an advisory message. In autoswitch mode it writes the recommended model to `~/.claude/settings.json` so the next session starts on the right tier; running sessions are never switched mid-flight.
 
-| Tier | Use for |
-|------|---------|
-| `haiku` | Git ops, renames, formatting, file lookups, quick reads |
-| `sonnet` | Feature work, debugging, writing/editing code, planning |
-| `opus` | Architecture, deep multi-file analysis, complex refactors |
+**`pre_tool_use.py`** (`PreToolUse` on `Agent`/`Task`) enforces sub-agent routing at spawn time. Generic spawns are rewritten to the matching `routed-*` agent variant, custom agent types get a model-only recommendation, and an explicit model set by the caller is always respected. Controlled by `subagent_enforcement` (`on` | `advisory` | `off`, default `on`).
 
-![Sub-agent spawned with Sonnet 4.6 model](assets/sub-agent-routing.png)
+**`session_init.py`** (`SessionStart`) injects the task-class rules below into every session so you and your sub-agents share one routing table.
 
-**`model-router-hook.sh`** (`UserPromptSubmit`) classifies the incoming prompt, compares the recommended tier against the current model in `settings.json`, and switches if they do not match. The switch is reflected immediately in the current message.
+![Sub-agent spawned with the routed model](assets/sub-agent-routing.png)
+
+### Routing model
+
+Routing is effort-first: the classifier picks an effort level, then the model that fits it. `effort_warn_distance` damps borderline cases so a prompt near a class boundary warns rather than flipping the model. The classifier is heuristics-first (keyword and pattern matching) with an optional headless `claude -p --model haiku` fallback for ambiguous prompts. The fallback needs no API key (it uses your Claude Code auth), caches results by prompt hash in the plugin data dir, and can be disabled with `classifier.cli_fallback: false`. Everything fails open: any error passes the prompt through unmodified.
+
+<!-- advisory:start -->
+## Model Tier Rules
+
+These rules apply to YOU and to every sub-agent you spawn.
+
+### Task classes and default targets
+
+| Class | Target model | Effort | When to use |
+|---|---|---|---|
+| mechanical | haiku | none | Git ops, renames, formatting, lint, file moves, version bumps, quick lookups, short imperative tasks. |
+| implementation | sonnet | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
+| debugging | sonnet | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
+| architecture | opus | high | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
+| extreme | fable | high | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
+| abstain | (no routing) | - | Prompt does not clearly match any class; current model and effort pass through unmodified. |
+
+### Sub-agent model selection (MANDATORY)
+
+When calling the Agent tool, set the model parameter to match the task class
+above. Never default all sub-agents to opus. Match the model to the work:
+mechanical work goes to haiku, standard coding to sonnet, deep analysis to
+opus, and only platform-scale efforts to fable.
+<!-- advisory:end -->
 
 ## Installation
 
@@ -49,12 +73,6 @@ claude plugin install claude-model-router-hook@claude-model-router-hook
 
 Hooks are registered automatically. Restart Claude Code to activate.
 
-### One-liner (manual)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh | bash
-```
-
 ### Manual
 
 ```bash
@@ -63,52 +81,23 @@ cd claude-model-router-hook
 ./install.sh
 ```
 
-Or copy manually:
-
-```bash
-mkdir -p ~/.claude/hooks
-cp hooks/session-init.sh hooks/model-router-hook.sh ~/.claude/hooks/
-chmod +x ~/.claude/hooks/session-init.sh ~/.claude/hooks/model-router-hook.sh
-```
-
-Then add hooks to `~/.claude/settings.json` (use the full absolute path from `echo $HOME`):
-
-Under `SessionStart`:
-
-```json
-{
-  "type": "command",
-  "command": "/home/yourname/.claude/hooks/session-init.sh",
-  "timeout": 2
-}
-```
-
-Under `UserPromptSubmit`:
-
-```json
-"UserPromptSubmit": [
-  {
-    "matcher": "",
-    "hooks": [
-      {
-        "type": "command",
-        "command": "/home/yourname/.claude/hooks/model-router-hook.sh",
-        "timeout": 2
-      }
-    ]
-  }
-]
-```
-
-Then restart Claude Code.
+The plugin registers its `SessionStart`, `UserPromptSubmit`, and `PreToolUse` hooks through its bundled `hooks.json`; there is nothing to wire into `settings.json` by hand. Restart Claude Code to activate.
 
 ## Override
 
-Prefix any prompt with `~` to skip classification entirely and keep the current model active.
+Prefix any prompt with `~` or `<` to skip classification entirely and keep the current model active.
 
 ## Configuration
 
-Settings are read from `~/.claude/settings.json`. The advisor writes the `model` field under `env` when switching tiers. No other files are modified.
+Config is read from a `router` block in your Claude settings, merged over built-in defaults (project config wins over global). The schema is v2; a v1 config is migrated in memory at load time and your files are never rewritten. Key knobs:
+
+| Key | Default | Effect |
+|---|---|---|
+| `apply_mode` | `warn` | `warn` advises only; autoswitch writes the recommended model to `~/.claude/settings.json` for new sessions only, never the live one. |
+| `allow_fable_autoswitch` | `false` | Extra gate: even in autoswitch mode, routing up to `fable` only writes when this is on. |
+| `subagent_enforcement` | `on` | `on` rewrites/injects sub-agent routing in `PreToolUse`; `advisory` recommends only; `off` disables it. |
+| `classifier.cli_fallback` | `true` | Enables the optional headless `claude -p --model haiku` classifier fallback for ambiguous prompts. |
+| `thresholds.effort_warn_distance` | `2` | Boundary damping: prompts within this effort distance of a class edge warn instead of switching. |
 
 ## Log
 
@@ -120,265 +109,10 @@ Activity is written to `~/.claude/hooks/model-router-hook.log`:
 [2026-03-07 12:02:00] OVERRIDE prompt="~ keep opus for this..."
 ```
 
-## Setup Prompt
 
-Copy and paste this into any Claude Code session to install the hooks automatically.
+## Known limitations
 
-<details>
-<summary>View prompt</summary>
-
-```
-Set up the model-matchmaker hook system in my global Claude Code config. Do exactly the following steps:
-
-────────────────────────────────────────────────────────────
-STEP 1 — Create the hooks directory
-────────────────────────────────────────────────────────────
-
-Run: mkdir -p ~/.claude/hooks
-
-
-────────────────────────────────────────────────────────────
-STEP 2 — Create ~/.claude/hooks/session-init.sh
-────────────────────────────────────────────────────────────
-
-Write this exact content to the file, then run: chmod +x ~/.claude/hooks/session-init.sh
-
-#!/bin/bash
-# Session init hook: injects model-tier guidance into every conversation,
-# including mandatory rules for sub-agent model selection.
-# Adapted from model-matchmaker (https://github.com/coyvalyss1/model-matchmaker)
-
-INPUT=$(cat)
-
-MODEL=$(echo "$INPUT" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(data.get('model', 'unknown'))
-except:
-    print('unknown')
-" 2>/dev/null)
-
-MODEL_LOWER=$(echo "$MODEL" | tr '[:upper:]' '[:lower:]')
-TIER_HINT=""
-if echo "$MODEL_LOWER" | grep -q "opus"; then
-    TIER_HINT=" You are currently on Opus. For simple tasks (git ops, renames, formatting), mention that Haiku or Sonnet would be cheaper."
-elif echo "$MODEL_LOWER" | grep -q "haiku"; then
-    TIER_HINT=" You are currently on Haiku. For deep analysis or architecture work, mention that Opus would produce better results."
-elif echo "$MODEL_LOWER" | grep -q "sonnet"; then
-    TIER_HINT=" You are currently on Sonnet. For simple mechanical tasks Haiku is cheaper; for architecture or deep analysis Opus is better."
-fi
-
-cat << EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": "## Model Tier Rules\n\nThese rules apply to YOU and to every sub-agent you spawn.\n\n### Sub-agent model selection (MANDATORY)\nWhen calling the Agent tool, you MUST set the model parameter based on task complexity:\n- **haiku** — simple mechanical tasks: file searches, grep, glob, reading a handful of files, git status/log, listing directories, quick lookups. Default for Explore agents unless deep reasoning is required.\n- **sonnet** — standard implementation: writing/editing code, debugging, creating components, running tests, most general-purpose agents.\n- **opus** — architecture decisions, deep multi-file analysis, complex refactors, plan-mode agents, anything requiring sustained reasoning across large context.\n\nNever default all sub-agents to Opus. Match the model to the work.\n\n### Your own tier${TIER_HINT}\n- Haiku: git ops, renames, formatting, simple edits.\n- Sonnet: feature work, debugging, planning.\n- Opus: architecture, deep analysis, multi-system reasoning."
-  }
-}
-EOF
-
-exit 0
-
-
-────────────────────────────────────────────────────────────
-STEP 3 — Create ~/.claude/hooks/model-router-hook.sh
-────────────────────────────────────────────────────────────
-
-Write this exact content to the file, then run: chmod +x ~/.claude/hooks/model-router-hook.sh
-
-#!/bin/bash
-# Model Router Hook (UserPromptSubmit)
-# Auto-switches settings.json to the recommended model tier and blocks with
-# a minimal "↑ Enter to resend" message. On settings write failure, falls
-# back to a non-blocking advisory.
-#
-# Override: prefix prompt with "~" to bypass entirely.
-# Adapted from model-matchmaker (https://github.com/coyvalyss1/model-matchmaker)
-
-INPUT=$(cat)
-
-LOG_DIR="$HOME/.claude/hooks"
-mkdir -p "$LOG_DIR" 2>/dev/null
-
-STDERR_FILE=$(mktemp)
-STDOUT_RESULT=$(echo "$INPUT" | python3 -c '
-import json, sys, os, re
-from datetime import datetime
-
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-
-prompt = data.get("prompt", "")
-
-# Override: prefix with "~" bypasses all checks
-if prompt.lstrip().startswith("~"):
-    try:
-        log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
-        snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(log_path, "a") as f:
-            f.write(f"[{ts}] OVERRIDE prompt=\"{snippet}\"\n")
-    except Exception:
-        pass
-    sys.exit(0)
-
-# Detect model from settings.json
-model = ""
-settings = {}
-settings_path = os.path.expanduser("~/.claude/settings.json")
-try:
-    with open(settings_path, "r") as f:
-        settings = json.load(f)
-    model = settings.get("model", "").lower()
-except Exception:
-    sys.exit(0)
-
-is_opus = "opus" in model
-is_sonnet = "sonnet" in model
-is_haiku = "haiku" in model
-
-if not (is_opus or is_sonnet or is_haiku):
-    sys.exit(0)
-
-prompt_lower = prompt.lower()
-word_count = len(prompt.split())
-
-# --- Classify ---
-opus_keywords = [
-    "architect", "architecture", "evaluate", "tradeoff", "trade-off",
-    "strategy", "strategic", "compare approaches", "why does", "deep dive",
-    "redesign", "across the codebase", "investor", "multi-system",
-    "complex refactor", "analyze", "analysis", "plan mode", "rethink",
-    "high-stakes", "critical decision"
-]
-haiku_patterns = [
-    r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
-    r"\bcommit\b.*\b(change|push|all)\b", r"\bpush\s+(to|the|remote|origin)\b",
-    r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
-    r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
-    r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
-    r"\bupdate\s+(version|package)\b"
-]
-sonnet_patterns = [
-    r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b", r"\bdebug\b",
-    r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
-    r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
-    r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b"
-]
-
-has_opus_signal = any(kw in prompt_lower for kw in opus_keywords)
-if has_opus_signal or (word_count > 100 and "?" in prompt) or word_count > 200:
-    recommendation = "opus"
-else:
-    is_haiku_task = word_count < 60 and any(re.search(p, prompt_lower) for p in haiku_patterns)
-    if is_haiku_task:
-        recommendation = "haiku"
-    elif any(re.search(p, prompt_lower) for p in sonnet_patterns):
-        recommendation = "sonnet"
-    else:
-        recommendation = None
-
-# --- Determine if mismatch ---
-block = False
-new_model = None
-
-if recommendation == "haiku" and (is_opus or is_sonnet):
-    block = True
-    new_model = "haiku"
-elif recommendation == "sonnet" and is_opus:
-    block = True
-    suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
-    new_model = "sonnet" + (suffix.group(1) if suffix else "")
-elif recommendation == "opus" and (is_sonnet or is_haiku):
-    block = True
-    suffix = re.search(r"(\[.+?\])$", settings.get("model", ""))
-    new_model = "opus" + (suffix.group(1) if suffix else "")
-
-# --- Log ---
-try:
-    log_path = os.path.expanduser("~/.claude/hooks/model-router-hook.log")
-    snippet = prompt[:30].replace("\n", " ") + ("..." if len(prompt) > 30 else "")
-    rec = recommendation or "match"
-    action = f"AUTOSWITCH->{new_model}" if block else "ALLOW"
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_path, "a") as f:
-        f.write(f"[{ts}] model={model} rec={rec} action={action} prompt=\"{snippet}\"\n")
-except Exception:
-    pass
-
-# --- Act ---
-if block and new_model:
-    try:
-        settings["model"] = new_model
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-        print(f"Auto-switched to {new_model} — press ↑ Enter to resend  (~ prefix to keep {model})", file=sys.stderr)
-        sys.exit(2)
-    except Exception:
-        base = new_model.split("[")[0]
-        output = {"systemMessage": f"Model tip: switch to {new_model} for this task. /model {base}"}
-        print(json.dumps(output))
-' 2>"$STDERR_FILE")
-
-EXIT_CODE=$?
-STDERR_CONTENT=$(cat "$STDERR_FILE")
-rm -f "$STDERR_FILE"
-
-if [ $EXIT_CODE -eq 2 ]; then
-    echo "$STDERR_CONTENT" >&2
-    exit 2
-fi
-
-if [ -n "$STDOUT_RESULT" ]; then
-    echo "$STDOUT_RESULT"
-fi
-
-exit 0
-
-
-────────────────────────────────────────────────────────────
-STEP 4 — Update ~/.claude/settings.json
-────────────────────────────────────────────────────────────
-
-Add these two hook entries to the "hooks" object in ~/.claude/settings.json.
-Preserve any existing hooks already in the file.
-
-Under "SessionStart", add a second hook entry alongside any existing ones:
-  {
-    "type": "command",
-    "command": "~/.claude/hooks/session-init.sh",
-    "timeout": 2
-  }
-
-Add a new top-level "UserPromptSubmit" section:
-  "UserPromptSubmit": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "~/.claude/hooks/model-router-hook.sh",
-          "timeout": 2
-        }
-      ]
-    }
-  ]
-
-Use the full absolute path for "command" (e.g. /Users/yourname/.claude/hooks/...).
-You can find your home path by running: echo $HOME
-
-
-────────────────────────────────────────────────────────────
-STEP 5 — Restart Claude Code
-────────────────────────────────────────────────────────────
-
-Restart to activate the hooks.
-```
-
-</details>
+- Multi-hook `updatedInput` merge order (A-3): when more than one `PreToolUse` hook returns an `updatedInput` for the same tool call, the order in which Claude Code merges them is undocumented platform behavior. The router writes its rewrite defensively, but a competing hook that also rewrites the spawn can win depending on merge order.
 
 ## Credits
 
