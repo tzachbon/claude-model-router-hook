@@ -16,16 +16,22 @@ DEFAULT_KEYWORDS = {
     "mechanical": [],
     "implementation": [],
     "debugging": ["deadlock", "intermittent", "segfault", "corrupt"],
+    # High-frequency English words (design, decision, approach, propose, should
+    # we, platform, ...) are NOT bare keywords: each would score +2 and reach the
+    # low-confidence floor, over-routing routine prompts to opus. Architecture
+    # signals are phrases (design decision, propose an approach, tradeoff
+    # analysis, how should we design, ...) plus lower-frequency technical terms.
     "architecture": [
         "architect", "architecture", "evaluate", "tradeoff", "trade-off",
         "strategy", "strategic", "compare approaches", "why does", "deep dive",
         "redesign", "across the codebase", "investor", "multi-system",
-        "complex refactor", "analyze", "analysis", "plan mode", "rethink",
-        "high-stakes", "critical decision", "design", "decision", "propose",
-        "recommend", "approach", "versus", "walk me through", "should we",
-        "how should", "data model", "migrat", "rewrit", "replatform",
-        "platform", "monolith", "microservice", "multi-region", "multi-year",
-        "long-horizon", "epic", "end-to-end",
+        "complex refactor", "tradeoff analysis", "plan mode", "rethink",
+        "high-stakes", "critical decision", "design decision",
+        "architecture decision", "design doc", "propose an approach",
+        "the right approach", "which approach", "how should we design",
+        "how should we structure", "walk me through", "data model", "migrat",
+        "rewrit", "replatform", "monolith", "microservice", "multi-region",
+        "multi-year", "long-horizon", "epic", "bounded-context",
     ],
     # Extreme markers are deliberately PHRASES (not bare tokens like "migrate"
     # or "rewrite"): each hit is +1 and >= 2 escalates architecture -> extreme,

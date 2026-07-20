@@ -58,3 +58,13 @@
 {"id": "abs-008", "prompt": "In what year did the architect who redesigned the migration of the old monolith building near the database district win the strategy award for the platform rewrite exhibition?", "expected_class": "abstain", "tags": ["trivia", "keyword-stuffed", "adversarial"]}
 {"id": "abs-009", "prompt": "debug regression architecture tradeoff migration rewrite platform epic race condition traceback deadlock refactor deploy prod", "expected_class": "abstain", "tags": ["keyword-stuffed", "adversarial"]}
 {"id": "abs-010", "prompt": "cool", "expected_class": "abstain", "tags": ["chitchat"]}
+{"id": "conf-001", "prompt": "implement the feature described in the design decision doc", "expected_class": "implementation", "expected": {"model": "sonnet", "effort": "medium"}, "tags": ["confounder", "design", "decision"]}
+{"id": "conf-002", "prompt": "create a React component for the design system button", "expected_class": "implementation", "expected": {"model": "sonnet", "effort": "medium"}, "tags": ["confounder", "design"]}
+{"id": "conf-003", "prompt": "write a helper that formats the platform version string", "expected_class": "implementation", "expected": {"model": "sonnet", "effort": "medium"}, "tags": ["confounder", "platform"]}
+{"id": "conf-004", "prompt": "rename the decisionLog variable to auditLog in service.ts", "expected_class": "mechanical", "expected": {"model": "haiku"}, "tags": ["confounder", "decision"]}
+{"id": "conf-005", "prompt": "git commit the design doc changes with message update wording", "expected_class": "mechanical", "expected": {"model": "haiku"}, "tags": ["confounder", "design-doc"]}
+{"id": "conf-006", "prompt": "what approach should I use for this loop?", "expected_class": "abstain", "tags": ["confounder", "approach"]}
+{"id": "conf-007", "prompt": "should we add error handling here?", "expected_class": "abstain", "tags": ["confounder", "should-we"]}
+{"id": "conf-008", "prompt": "add the design tokens to the theme file", "expected_class": "abstain", "tags": ["confounder", "design"]}
+{"id": "conf-009", "prompt": "add a decision log entry to the readme", "expected_class": "abstain", "tags": ["confounder", "decision"]}
+{"id": "conf-010", "prompt": "thoughts on the platform?", "expected_class": "abstain", "tags": ["confounder", "platform"]}

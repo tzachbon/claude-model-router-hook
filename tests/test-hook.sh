@@ -153,7 +153,7 @@ EOF
 run_hook "my-custom-keyword should trigger opus" "$HOME_DIR"
 assert_routes_to "user-defined keyword triggers opus" "opus"
 
-run_hook "analyze this" "$HOME_DIR"
+run_hook "evaluate the tradeoff" "$HOME_DIR"
 assert_routes_to "built-in keyword still works in extend mode" "opus"
 
 rm -rf "$HOME_DIR"

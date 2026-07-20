@@ -618,6 +618,13 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(eval): lock CI gate thresholds from baseline`
   - _Requirements: FR-39, AC-10.2, AC-10.3_
 
+- [x] 4.4.1 [FIX 4.3] Fix: architecture keyword confounder over-routing
+  - **Do**: Convert bare high-frequency architecture keywords (design, decision, approach, propose, recommend, versus, platform, end-to-end, analyze, analysis, should we, how should) to phrase-based markers mirroring the extreme-marker style; add adversarial eval rows pinning incidental-keyword routine prompts; re-baseline and re-justify share ceilings in the same commit.
+  - **Files**: plugins/claude-model-router-hook/hooks/router/taxonomy.py, tests/eval/eval_set.jsonl, tests/eval/run_eval.py
+  - **Done when**: routine probes (design tokens edit, decision log entry, which-approach question) no longer route opus/fable; eval accuracy >= 0.90; all tests green
+  - **Verify**: `python3 tests/eval/run_eval.py && python3 -m unittest discover tests && bash tests/test-hook.sh`
+  - **Commit**: `fix(router): phrase-based architecture keywords, adversarial eval rows`
+
 - [ ] 4.5 [VERIFY] Quality checkpoint: unit + integration + eval
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py`
   - **Verify**: All exit 0
