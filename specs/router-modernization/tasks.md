@@ -771,7 +771,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All review comments addressed
   - **Commit**: `fix(router): address review feedback` (per fix, if needed)
 
-- [ ] 5.3 Final validation
+- [x] 5.3 Final validation
   - **Do**:
     1. Confirm zero regressions: full local suite green; all tasks above checked.
     2. Confirm invariants one last time: no mythos string in any emitting code path, haiku never paired with effort, all error paths exit 0.
