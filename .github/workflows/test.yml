@@ -18,7 +18,13 @@ jobs:
           python-version: "3.11"
 
       - name: Unit tests
-        run: python3 -m unittest tests/test_config.py -v
+        run: python3 -m unittest discover tests -v
 
       - name: Integration tests
         run: bash tests/test-hook.sh
+
+      - name: Eval gate
+        run: python3 tests/eval/run_eval.py
+
+      - name: Docs parity
+        run: python3 scripts/sync_docs.py --check

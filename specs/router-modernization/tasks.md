@@ -701,7 +701,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All four gates green locally
   - **Commit**: `chore(router): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 4.13 CI wiring in test.yml
+- [x] 4.13 CI wiring in test.yml
   - **Do**:
     1. Update `.github/workflows/test.yml`: unit step -> `python3 -m unittest discover tests -v`; keep integration `bash tests/test-hook.sh`; add eval gate step `python3 tests/eval/run_eval.py`; add docs parity step `python3 scripts/sync_docs.py --check`.
   - **Files**: .github/workflows/test.yml
