@@ -675,7 +675,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: No docs drift, tests green
   - **Commit**: `chore(docs): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 4.10 Correct slides claims
+- [x] 4.10 Correct slides claims
   - **Do**:
     1. Edit `docs/slides/slides.md`: correct behavior claims only (warn default, autoswitch semantics, CLI fallback disclosure, 4-tier ladder with effort); no content rewrite beyond claims (out of scope guard).
   - **Files**: docs/slides/slides.md
