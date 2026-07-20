@@ -33,7 +33,7 @@ from router.ladder import MODEL_IDS, TIERS  # noqa: E402
 # The eval set is deliberately class-balanced (10 rows per class), so tier shares
 # reflect class balance, not production traffic: with all 10 extreme rows routed
 # correctly, fable is ~19% of the ~52 non-abstain decisions and opus+fable ~40%
-# (architecture + extreme = 2 of 6 classes). The provisional 0.10 / 0.40 ceilings
+# (architecture + extreme = 2 of 6 classes). The earlier 0.10 / 0.40 ceilings
 # were pre-baseline guesses below those structural floors and are unreachable on a
 # balanced set. Finalized values sit just above the floors: they still catch a real
 # regression (architecture leaking into extreme, or over-routing to opus/fable)

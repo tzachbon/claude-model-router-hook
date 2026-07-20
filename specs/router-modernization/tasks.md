@@ -609,7 +609,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - _Requirements: FR-39_
   - _Design: Eval Harness thresholds note_
 
-- [ ] 4.4 Lock eval thresholds
+- [x] 4.4 Lock eval thresholds
   - **Do**:
     1. Set final `ACCURACY_MIN`, `FABLE_SHARE_MAX`, `TOP_SHARE_MAX` in run_eval.py from the 4.3 baseline (accuracy >= 0.90 target); replace "provisional" comment with rationale referencing baseline numbers.
   - **Files**: tests/eval/run_eval.py
