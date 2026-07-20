@@ -49,6 +49,12 @@
               "default": 60
             }
           }
+        },
+        "action": {
+          "type": "string",
+          "enum": ["warn", "autoswitch"],
+          "default": "warn",
+          "description": "\"warn\" (default) recommends a model switch; \"autoswitch\" writes settings.json. Migrated to apply_mode in v2."
         }
       }
     },

@@ -197,6 +197,9 @@ class TestDetectVersion(unittest.TestCase):
     def test_unknown_keys_only_is_v2(self):
         self.assertEqual(detect_version({"apply_mode": "warn"}), 2)
 
+    def test_action_key_triggers_v1(self):
+        self.assertEqual(detect_version({"action": "warn"}), 1)
+
 
 # ── Tests: migrate_v1 full mapping table (FR-32, design table) ─────────────
 
@@ -255,6 +258,14 @@ class TestMigrateV1Table(unittest.TestCase):
     def test_empty_config_migrates_to_minimal(self):
         migrated = migrate_v1({})
         self.assertEqual(migrated, {"version": 2, "apply_mode": "warn"})
+
+    def test_action_autoswitch_maps_to_apply_mode(self):
+        migrated = migrate_v1({"action": "autoswitch", "opus": {"keywords": ["x"]}})
+        self.assertEqual(migrated["apply_mode"], "autoswitch")
+        self.assertEqual(migrated["classes"]["architecture"]["keywords"], ["x"])
+
+    def test_action_warn_stays_warn(self):
+        self.assertEqual(migrate_v1({"action": "warn"})["apply_mode"], "warn")
 
 
 # ── Tests: merge semantics (FR-32, AC-8.4) ─────────────────────────────────

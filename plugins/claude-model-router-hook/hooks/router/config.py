@@ -107,7 +107,7 @@ def detect_version(raw):
     if raw.get("version") == 2:
         return 2
     if "version" not in raw and any(
-        key in raw for key in ("opus", "sonnet", "haiku", "thresholds")
+        key in raw for key in ("opus", "sonnet", "haiku", "thresholds", "action")
     ):
         return 1
     return 2
@@ -122,6 +122,11 @@ def migrate_v1(raw):
     becomes an explicit apply_mode.
     """
     migrated = {"version": 2, "apply_mode": "warn"}
+
+    # main's v1 "action" field (warn|autoswitch) maps to v2 apply_mode so
+    # users who adopted it do not silently lose the setting on migration.
+    if raw.get("action") in ("warn", "autoswitch"):
+        migrated["apply_mode"] = raw["action"]
 
     classes = {}
     for tier, class_name in _V1_TIER_TO_CLASS.items():
