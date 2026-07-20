@@ -751,7 +751,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: All CI checks pass on the PR
   - **Commit**: None
 
-- [ ] V6 [VERIFY] AC checklist
+- [x] V6 [VERIFY] AC checklist
   - **Do**: Read `specs/router-modernization/requirements.md`; for each AC-1.1..AC-11.5 verify programmatically (run the relevant unit/integration/eval test or grep the implementing code); record the checklist result in `specs/router-modernization/.progress.md`
   - **Verify**: Every AC maps to a passing automated check; `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py` exit 0
   - **Done when**: All acceptance criteria confirmed met via automated checks
