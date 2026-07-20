@@ -631,7 +631,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: Eval gate green alongside full suite
   - **Commit**: `chore(eval): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 4.6 scripts/sync_docs.py
+- [x] 4.6 scripts/sync_docs.py
   - **Do**:
     1. Create `scripts/sync_docs.py`: injects `router.advisory.ADVISORY_MD` between `<!-- advisory:start -->` / `<!-- advisory:end -->` markers in `README.md`, `prompt.md`, `PLUGIN/prompt.md`.
     2. `--check` mode: exit 1 on any drift (CI gate, AC-11.1); default mode rewrites in place.
