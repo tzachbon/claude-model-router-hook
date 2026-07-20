@@ -719,7 +719,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `chore(release): bump manifests to 2.0.0`
   - _Requirements: FR-45, AC-11.4_
 
-- [ ] 4.15 CHANGELOG backfill + 2.0.0 entry
+- [x] 4.15 CHANGELOG backfill + 2.0.0 entry
   - **Do**:
     1. Backfill `CHANGELOG.md` entries 1.0.1, 1.1.0, 1.3.0 from `git log` history.
     2. Add 2.0.0 entry: v2 rewrite summary, effort-first routing, PreToolUse enforcement, CLI fallback disclosure, config v2 + migration, breaking/semantic change note (haiku session now up-routes to sonnet for implementation/debugging), eval baseline threshold rationale.
