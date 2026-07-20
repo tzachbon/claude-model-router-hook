@@ -695,7 +695,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `feat(install): dedup installers, ship agents and v2 schema`
   - _Requirements: FR-34, FR-43, FR-46, AC-11.2, AC-11.5_
 
-- [ ] 4.12 [VERIFY] Quality checkpoint: full local suite
+- [x] 4.12 [VERIFY] Quality checkpoint: full local suite
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py && python3 scripts/sync_docs.py --check`
   - **Verify**: All exit 0
   - **Done when**: All four gates green locally
