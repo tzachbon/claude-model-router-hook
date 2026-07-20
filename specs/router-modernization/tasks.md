@@ -729,7 +729,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `docs(changelog): close version gap and add 2.0.0`
   - _Requirements: FR-45, AC-11.4_
 
-- [ ] V4 [VERIFY] Full local CI
+- [x] V4 [VERIFY] Full local CI
   - **Do**: Run the complete local CI suite: `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py && python3 scripts/sync_docs.py --check && python3 -m py_compile plugins/claude-model-router-hook/hooks/router/*.py plugins/claude-model-router-hook/hooks/*.py scripts/sync_docs.py tests/eval/run_eval.py`
   - **Verify**: All commands exit 0
   - **Done when**: Unit, integration, eval, docs parity, compile all green
