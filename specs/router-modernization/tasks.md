@@ -551,7 +551,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(hooks): add PreToolUse rewrite and respect suites`
   - _Requirements: FR-41, AC-4.1, AC-4.3, AC-5.1, AC-10.5_
 
-- [ ] 3.13 test-hook.sh: autoswitch suites
+- [x] 3.13 test-hook.sh: autoswitch suites
   - **Do**:
     1. Add suites with fake HOME + autoswitch config: tier mismatch writes `model`/`effortLevel` to fake `~/.claude/settings.json` preserving other keys; stderr says new-sessions (never live-switch claim).
     2. Fable decision with `allow_fable_autoswitch: false` -> no settings write, warn only; corrupt settings.json -> degrade to warn, file untouched.

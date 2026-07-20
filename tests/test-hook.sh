@@ -39,6 +39,21 @@ make_home_effort() {
     echo "$tmpdir"
 }
 
+# Like make_home but with apply_mode autoswitch and a settings.json carrying a
+# foreign key ("theme") so writes can be checked for key preservation.
+# $1 model, $2 effortLevel (default high), $3 allow_fable_autoswitch (default false).
+make_home_autoswitch() {
+    local model="$1"
+    local effort="${2:-high}"
+    local allow_fable="${3:-false}"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkdir -p "$tmpdir/.claude/hooks"
+    printf '{"model":"%s","effortLevel":"%s","theme":"dark"}' "$model" "$effort" > "$tmpdir/.claude/settings.json"
+    printf '{"version":2,"apply_mode":"autoswitch","allow_fable_autoswitch":%s,"classifier":{"cli_fallback":false}}' "$allow_fable" > "$tmpdir/.claude/model-router.json"
+    echo "$tmpdir"
+}
+
 # Run the hook with a given prompt and HOME.
 # Returns exit code via $HOOK_EXIT, stderr via $HOOK_STDERR.
 run_hook() {
@@ -416,6 +431,97 @@ run_pre_hook '{not json' "$HOME_DIR"
 assert_pre_passthrough "malformed stdin exits 0 with no output"
 
 rm -rf "$HOME_DIR"
+
+# ── Autoswitch assertions (FR-9, FR-10, FR-11, AC-3.2, AC-3.3) ───────────────
+
+# Assert the fake HOME's settings.json satisfies a python assertion snippet
+# (the file path is passed as sys.argv[1]).
+assert_settings() {
+    local test_name="$1"
+    local home_dir="$2"
+    local py="$3"
+    if python3 -c "$py" "$home_dir/.claude/settings.json" >/dev/null 2>&1; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name - settings: $(cat "$home_dir/.claude/settings.json")"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    fi
+}
+
+# Assert the fake HOME's settings.json is byte-identical to a captured baseline.
+assert_settings_unchanged() {
+    local test_name="$1"
+    local home_dir="$2"
+    local before="$3"
+    local after
+    after=$(cat "$home_dir/.claude/settings.json")
+    if [ "$before" = "$after" ]; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name - settings changed to: $after"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    fi
+}
+
+# ── Suite 11: Autoswitch settings write (FR-9, FR-10, AC-3.2) ─────────────────
+echo ""
+echo "--- Suite 11: Autoswitch writes settings for new sessions ---"
+
+AS_ARCH_PROMPT="analyze the architecture and evaluate the tradeoffs deeply"
+
+# Clean project cwd (no .claude) so the write path is the fake home settings.json
+# and no project-level setting masks it.
+HOME_AS=$(make_home_autoswitch "sonnet" "high" "false")
+PROJ_CLEAN=$(mktemp -d)
+
+run_hook "$AS_ARCH_PROMPT" "$HOME_AS" "$PROJ_CLEAN"
+assert_routes_to "autoswitch tier mismatch exits 2 with opus notice" "opus"
+assert_stderr_contains "autoswitch stderr claims new sessions, not live switch" "new sessions"
+assert_settings "autoswitch writes model+effortLevel, preserves foreign key" "$HOME_AS" \
+    'import json,sys; s=json.load(open(sys.argv[1])); assert "opus" in s["model"]; assert s.get("effortLevel"); assert s["theme"]=="dark"'
+
+rm -rf "$HOME_AS" "$PROJ_CLEAN"
+
+# ── Suite 12: Fable autoswitch gate off -> warn, no write (FR-11, AC-3.3) ─────
+echo ""
+echo "--- Suite 12: Fable autoswitch gated off warns without writing ---"
+
+AS_EXTREME_PROMPT="write an rfc design doc for the distributed architecture and evaluate the tradeoffs"
+
+HOME_FG=$(make_home_autoswitch "sonnet" "high" "false")
+PROJ_CLEAN=$(mktemp -d)
+FG_BEFORE=$(cat "$HOME_FG/.claude/settings.json")
+
+run_hook "$AS_EXTREME_PROMPT" "$HOME_FG" "$PROJ_CLEAN"
+assert_routes_to "fable decision with gate off warns instead of writing" "fable"
+assert_settings_unchanged "fable gate off leaves settings.json unwritten" "$HOME_FG" "$FG_BEFORE"
+
+rm -rf "$HOME_FG" "$PROJ_CLEAN"
+
+# ── Suite 13: Corrupt settings.json degrades to warn (FR-10, AC-3.2) ──────────
+echo ""
+echo "--- Suite 13: Corrupt settings.json degrades autoswitch to warn ---"
+
+# Session model resolves from the project settings.local.json; the fake home
+# settings.json (the write target) is corrupt, so the write fails and the hook
+# degrades to a plain warn while leaving the file byte-identical.
+HOME_CO=$(make_home_autoswitch "sonnet" "high" "false")
+printf '{corrupt json!!' > "$HOME_CO/.claude/settings.json"
+CO_BEFORE=$(cat "$HOME_CO/.claude/settings.json")
+
+PROJ_MODEL=$(mktemp -d)
+mkdir -p "$PROJ_MODEL/.claude"
+printf '{"model":"sonnet","effortLevel":"high"}' > "$PROJ_MODEL/.claude/settings.local.json"
+
+run_hook "$AS_ARCH_PROMPT" "$HOME_CO" "$PROJ_MODEL"
+assert_routes_to "corrupt settings.json degrades autoswitch to warn" "opus"
+assert_settings_unchanged "corrupt settings.json left byte-identical" "$HOME_CO" "$CO_BEFORE"
+
+rm -rf "$HOME_CO" "$PROJ_MODEL"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
