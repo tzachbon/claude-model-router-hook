@@ -337,6 +337,86 @@ assert_routes_to "effort distance 2 mismatch warns" "opus"
 assert_stderr_contains "effort distance 2 warn suggests /effort xhigh" "/effort xhigh"
 rm -rf "$HOME_D2"
 
+# ── PreToolUse runner + assertions (FR-41, AC-4.x, AC-5.1, AC-10.5) ──────────
+PRE_HOOK="$(cd "$(dirname "$0")/.." && pwd)/plugins/claude-model-router-hook/hooks/pre_tool_use.py"
+
+# Run pre_tool_use.py with a tool-event JSON payload and HOME.
+# Sets PRE_STDOUT (raw stdout JSON) and PRE_EXIT. Optional $3 = extra env
+# assignment (e.g. "CLAUDE_MODEL_ROUTER_CHILD=1").
+run_pre_hook() {
+    local payload="$1"
+    local home_dir="$2"
+    local extra_env="${3:-}"
+    local out_file
+    out_file=$(mktemp)
+    (printf '%s' "$payload" | HOME="$home_dir" env $extra_env python3 "$PRE_HOOK" >"$out_file" 2>/dev/null) && PRE_EXIT=0 || PRE_EXIT=$?
+    PRE_STDOUT=$(cat "$out_file")
+    rm -f "$out_file"
+}
+
+# Assert PRE_STDOUT satisfies a python assertion snippet (stdin = PRE_STDOUT).
+assert_pre_json() {
+    local test_name="$1"
+    local py="$2"
+    if printf '%s' "$PRE_STDOUT" | python3 -c "$py" >/dev/null 2>&1; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name - stdout: $PRE_STDOUT"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    fi
+}
+
+# Assert a clean pass-through: exit 0 and no stdout at all.
+assert_pre_passthrough() {
+    local test_name="$1"
+    if [ "$PRE_EXIT" -eq 0 ] && [ -z "$PRE_STDOUT" ]; then
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $test_name - exit=$PRE_EXIT stdout: $PRE_STDOUT"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    fi
+}
+
+# ── Suite 10: PreToolUse rewrite + respect contract (FR-41) ──────────────────
+echo ""
+echo "--- Suite 10: PreToolUse subagent rewrite + respect ---"
+
+HOME_DIR=$(make_home "sonnet")
+MECH_PROMPT="rename the file src/a.py to src/b.py and fix imports"
+
+# Generic mechanical spawn: full rewrite -> routed-haiku variant + bare model alias.
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR"
+assert_pre_json "generic mechanical spawn rewrites to routed-haiku + model haiku" \
+    'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; u=d["updatedInput"]; assert d["permissionDecision"]=="allow"; assert u["subagent_type"]=="claude-model-router-hook:routed-haiku"; assert u["model"]=="haiku"'
+
+# Custom subagent_type: model-only injection, subagent_type left untouched (FR-15).
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"my-custom-agent\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR"
+assert_pre_json "custom subagent_type gets model-only injection, type untouched" \
+    'import json,sys; u=json.load(sys.stdin)["hookSpecificOutput"]["updatedInput"]; assert u["model"]=="haiku"; assert u["subagent_type"]=="my-custom-agent"'
+
+# Explicit caller model: respected, no updatedInput (locked decision 4).
+run_pre_hook '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"opus","prompt":"rename file a to b"}}' "$HOME_DIR"
+assert_pre_json "explicit caller model yields no updatedInput" \
+    'import json,sys; raw=sys.stdin.read(); d=json.loads(raw) if raw.strip() else {}; assert "updatedInput" not in d.get("hookSpecificOutput",{})'
+
+# Abstain (unclassifiable prompt): pass-through, no updatedInput (AC-4.3).
+run_pre_hook '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","prompt":"hello there friend"}}' "$HOME_DIR"
+assert_pre_passthrough "abstain prompt passes through with no output"
+
+# Child recursion guard: exit 0, no output (AC-10.5).
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_MODEL_ROUTER_CHILD=1"
+assert_pre_passthrough "CLAUDE_MODEL_ROUTER_CHILD guard exits 0 with no output"
+
+# Malformed stdin: fail open, exit 0, no output (FR-18).
+run_pre_hook '{not json' "$HOME_DIR"
+assert_pre_passthrough "malformed stdin exits 0 with no output"
+
+rm -rf "$HOME_DIR"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -541,7 +541,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(hooks): add fable, effort message, suffix suites`
   - _Requirements: FR-41, AC-1.1, AC-1.4, AC-10.5_
 
-- [ ] 3.12 test-hook.sh: PreToolUse suites
+- [x] 3.12 test-hook.sh: PreToolUse suites
   - **Do**:
     1. Add suites piping PreToolUse JSON to `python3 .../hooks/pre_tool_use.py`: generic mechanical spawn -> stdout updatedInput with `routed-haiku` + `model: haiku` (assert JSON fields); custom subagent_type -> model-only injection, type untouched; explicit caller model -> no updatedInput.
     2. Abstain prompt -> pass-through (no updatedInput); `CLAUDE_MODEL_ROUTER_CHILD=1` -> exit 0 no output; malformed stdin -> exit 0.
