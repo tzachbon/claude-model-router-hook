@@ -569,7 +569,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
 
 ## Phase 4: Eval, Docs, CI, Manifests, Quality Gates
 
-- [ ] 4.1 Build eval_set.jsonl
+- [x] 4.1 Build eval_set.jsonl
   - **Do**:
     1. Create `tests/eval/eval_set.jsonl`: 50-100 rows, one JSON object per line with `id`, `prompt`, `expected_class`, `expected` (model, effort; haiku rows have no effort key), `tags`.
     2. >= 8 rows per class (mechanical, implementation, debugging, architecture, extreme, abstain) incl. adversarial/degenerate rows (huge mechanical prompts, keyword-stuffed trivia).
