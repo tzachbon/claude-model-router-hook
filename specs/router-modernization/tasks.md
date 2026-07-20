@@ -592,7 +592,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - _Requirements: FR-39, AC-10.2, AC-10.3, AC-2.5, NFR-1_
   - _Design: Eval Harness_
 
-- [ ] [VERIFY] Quality checkpoint: unit + integration + eval harness runs
+- [x] [VERIFY] Quality checkpoint: unit + integration + eval harness runs
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py; test $? -le 1`
   - **Verify**: Unit and integration exit 0; eval harness executes to completion (exit 0 or 1, no crash; gates are provisional until 4.4)
   - **Done when**: Full suite green and the eval harness produces a report
