@@ -745,7 +745,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Verify**: `gh pr view --json url -q .url`
   - **Commit**: None
 
-- [ ] V5 [VERIFY] CI pipeline passes
+- [x] V5 [VERIFY] CI pipeline passes
   - **Do**: `gh pr checks --watch` until completion; on failure read logs, fix, push, re-watch
   - **Verify**: `gh pr checks` shows all green
   - **Done when**: All CI checks pass on the PR
@@ -759,7 +759,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
 
 ## Phase 5: PR Lifecycle
 
-- [ ] 5.1 CI monitoring loop
+- [x] 5.1 CI monitoring loop
   - **Do**: Monitor `gh pr checks`; on any failure: read logs, fix locally, run V4 suite, push; repeat until green (max 20 cycles)
   - **Verify**: `gh pr checks` all green
   - **Done when**: CI stable green on latest push

@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "updated": "2026-07-19T12:46:28Z",
+  "directories": [
+    {
+      "path": "./specs",
+      "specsCount": 1,
+      "isDefault": true
+    }
+  ],
+  "specs": [
+    {
+      "name": "router-modernization",
+      "path": "./specs/router-modernization",
+      "phase": "execution",
+      "taskIndex": 14,
+      "totalTasks": 74
+    }
+  ]
+}
