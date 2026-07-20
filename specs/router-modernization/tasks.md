@@ -710,7 +710,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `ci: add eval gate and docs parity steps`
   - _Requirements: FR-39, AC-10.2, AC-11.1_
 
-- [ ] 4.14 Bump manifests to 2.0.0
+- [x] 4.14 Bump manifests to 2.0.0
   - **Do**:
     1. Set version `2.0.0` in `.claude-plugin/plugin.json`, `PLUGIN/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
   - **Files**: .claude-plugin/plugin.json, plugins/claude-model-router-hook/.claude-plugin/plugin.json, .claude-plugin/marketplace.json
