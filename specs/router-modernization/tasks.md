@@ -580,7 +580,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - _Requirements: FR-38, AC-10.1_
   - _Design: Eval Harness_
 
-- [ ] 4.2 run_eval.py harness
+- [x] 4.2 run_eval.py harness
   - **Do**:
     1. Create `tests/eval/run_eval.py` importing `router.taxonomy` + `router.policy` directly (real entry point, AC-10.2/10.4), running with `cli_fallback: false` (deterministic, NFR-10).
     2. Print per-class accuracy, confusion matrix, tier distribution; exit 1 on: accuracy < `ACCURACY_MIN` (provisional 0.90), fable share > `FABLE_SHARE_MAX` (0.10), opus+fable share > `TOP_SHARE_MAX` (0.40), heuristic p95 >= 200ms (NFR-1).
