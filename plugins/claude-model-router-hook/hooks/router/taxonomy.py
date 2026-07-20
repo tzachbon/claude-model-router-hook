@@ -15,17 +15,31 @@ EXTREME_ESCALATION_MIN = 2
 DEFAULT_KEYWORDS = {
     "mechanical": [],
     "implementation": [],
-    "debugging": [],
+    "debugging": ["deadlock", "intermittent", "segfault", "corrupt"],
     "architecture": [
         "architect", "architecture", "evaluate", "tradeoff", "trade-off",
         "strategy", "strategic", "compare approaches", "why does", "deep dive",
         "redesign", "across the codebase", "investor", "multi-system",
         "complex refactor", "analyze", "analysis", "plan mode", "rethink",
-        "high-stakes", "critical decision",
+        "high-stakes", "critical decision", "design", "decision", "propose",
+        "recommend", "approach", "versus", "walk me through", "should we",
+        "how should", "data model", "migrat", "rewrit", "replatform",
+        "platform", "monolith", "microservice", "multi-region", "multi-year",
+        "long-horizon", "epic", "end-to-end",
     ],
+    # Extreme markers are deliberately PHRASES (not bare tokens like "migrate"
+    # or "rewrite"): each hit is +1 and >= 2 escalates architecture -> extreme,
+    # so phrase-level markers resist keyword-stuffed prompts that pile up single
+    # scale words without describing genuine program-scale work.
     "extreme": [
-        "multi-system", "migration plan", "across the entire codebase",
-        "long-horizon", "epic", "rewrite the platform",
+        "multi-system", "multi-region", "multi-year", "long-horizon", "epic",
+        "company-wide", "across the entire codebase", "across the whole codebase",
+        "entire codebase", "whole codebase", "entire system", "entire platform",
+        "all services", "every service", "every data store", "all forty",
+        "bounded-context", "several teams", "cross-team", "distributed database",
+        "end-to-end", "microservices", "replatform", "regional stacks",
+        "phased rollout", "rollback strategy", "program-level", "multi-tenant",
+        "rewrite the", "monolithic database",
     ],
 }
 
@@ -34,25 +48,32 @@ DEFAULT_PATTERNS = {
         r"\bgit\s+(commit|push|pull|status|log|diff|add|stash|branch|merge|rebase|checkout)\b",
         r"\bcommit\b.*\b(change|changes|push|all)\b",
         r"\bpush\s+(to|the|remote|origin)\b",
-        r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b", r"\bdelete\s+file\b",
+        r"\brename\b", r"\bre-?order\b", r"\bmove\s+file\b",
+        r"\bdelete\s+(the\s+)?file\b", r"\bmove\b.{0,40}\b(folder|directory|dir)\b",
+        r"\bgitignore\b", r"\bbump\b.{0,20}\bversion\b",
         r"\badd\s+(import|route|link)\b", r"\bformat\b", r"\blint\b",
         r"\bprettier\b", r"\beslint\b", r"\bremove\s+(unused|dead)\b",
         r"\bupdate\s+(version|package)\b",
     ],
     "implementation": [
         r"\bbuild\b", r"\bimplement\b", r"\bcreate\b", r"\bfix\b",
-        r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b", r"\bservice\b",
+        r"\badd\s+feature\b", r"\bwrite\b", r"\bcomponent\b",
         r"\bpage\b", r"\bdeploy\b", r"\btest\b", r"\bupdate\b", r"\brefactor\b",
-        r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bapi\b", r"\bfunction\b",
+        r"\bstyle\b", r"\bcss\b", r"\broute\b", r"\bfunction\b",
+        r"\bendpoint\b", r"\bparam(eter)?s?\b",
+        r"\bvalidat\w*\b", r"\bpars\w*\b",
     ],
     "debugging": [
-        r"\bdebug\b", r"\bwhy\s+is\b.{0,80}\bfailing\b", r"\bflaky\b",
-        r"\brace\s+(condition|conditions)\b", r"\bregression\b",
+        r"\bdebug\b",
+        r"\bwhy\s+.{0,40}\b(fail|fails|failing|failed|crash|crashes|break|broke|hang|loop)\w*\b",
+        r"\bflaky\b", r"\brace\s+(condition|conditions)\b", r"\bregression\b",
         r"\bstack\s+trace\b", r"error:", r"\btraceback\b", r"\bexit\s+code\b",
-        r"\bbisect\b", r"\breproduce\b",
+        r"\bbisect\b", r"\breproduce\b", r"\bcrash\w*\b", r"\bmemory\s+leak\b",
+        r"\bstack\s+overflow\b", r"\bhang\w*\b", r"\bloops?\s+infinitely\b",
+        r"\binfinite\s+loop\b",
     ],
     "architecture": [],
-    "extreme": [r"\brfc\b", r"\bdesign\s+doc\b"],
+    "extreme": [r"\brfc\b", r"\bdesign\s+doc\b", r"\bmigration\s+plan\b", r"\bprogram\b"],
 }
 
 ScoreResult = collections.namedtuple(

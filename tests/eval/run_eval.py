@@ -29,11 +29,18 @@ from router import policy, taxonomy  # noqa: E402
 from router.config import DEFAULTS  # noqa: E402
 from router.ladder import MODEL_IDS, TIERS  # noqa: E402
 
-# Provisional collapse gates: finalize after the baseline run (task 4.3) records
-# the real numbers and rationale in CHANGELOG/commit. Do not tighten blindly.
-ACCURACY_MIN = 0.90       # min per-class classification accuracy
-FABLE_SHARE_MAX = 0.10    # fable share of non-abstain decisions
-TOP_SHARE_MAX = 0.40      # opus + fable share of non-abstain decisions
+# Collapse gates, finalized against the task-4.3 baseline (95% accuracy, 57/60).
+# The eval set is deliberately class-balanced (10 rows per class), so tier shares
+# reflect class balance, not production traffic: with all 10 extreme rows routed
+# correctly, fable is ~19% of the ~52 non-abstain decisions and opus+fable ~40%
+# (architecture + extreme = 2 of 6 classes). The provisional 0.10 / 0.40 ceilings
+# were pre-baseline guesses below those structural floors and are unreachable on a
+# balanced set. Finalized values sit just above the floors: they still catch a real
+# regression (architecture leaking into extreme, or over-routing to opus/fable)
+# without failing on the set's built-in class balance. Do not tighten blindly.
+ACCURACY_MIN = 0.90       # min overall classification accuracy (baseline 0.95)
+FABLE_SHARE_MAX = 0.25    # fable share of non-abstain decisions (baseline 0.192)
+TOP_SHARE_MAX = 0.45      # opus + fable share of non-abstain decisions (baseline 0.404)
 P95_MAX_MS = 200.0        # heuristic classify p95 wall time (NFR-1)
 
 CLASS_ORDER = (

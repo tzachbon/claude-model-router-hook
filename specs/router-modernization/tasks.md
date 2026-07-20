@@ -598,7 +598,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: Full suite green and the eval harness produces a report
   - **Commit**: `chore(eval): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 4.3 Baseline eval run + record
+- [x] 4.3 Baseline eval run + record
   - **Do**:
     1. Run `python3 tests/eval/run_eval.py`; capture per-class accuracy, confusion matrix, tier shares, p95.
     2. Fix classifier/eval-set labeling issues until baseline is sane; record baseline numbers in `specs/router-modernization/.progress.md` Learnings.
