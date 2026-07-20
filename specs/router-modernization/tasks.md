@@ -561,7 +561,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `test(hooks): add autoswitch settings write and fable gating suites`
   - _Requirements: FR-9, FR-10, FR-11, AC-3.2, AC-3.3_
 
-- [ ] 3.14 [VERIFY] Quality checkpoint: full unit + integration
+- [x] 3.14 [VERIFY] Quality checkpoint: full unit + integration
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: Entire test suite green
