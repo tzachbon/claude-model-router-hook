@@ -735,7 +735,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: Unit, integration, eval, docs parity, compile all green
   - **Commit**: `chore(router): pass local CI` (only if fixes needed)
 
-- [ ] 4.16 Create PR
+- [x] 4.16 Create PR
   - **Do**:
     1. Confirm branch: `git branch --show-current` = `feat/router-modernization` (STOP if on main).
     2. Push: `git push -u origin feat/router-modernization`.
