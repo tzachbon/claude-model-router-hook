@@ -625,7 +625,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Verify**: `python3 tests/eval/run_eval.py && python3 -m unittest discover tests && bash tests/test-hook.sh`
   - **Commit**: `fix(router): phrase-based architecture keywords, adversarial eval rows`
 
-- [ ] 4.5 [VERIFY] Quality checkpoint: unit + integration + eval
+- [x] 4.5 [VERIFY] Quality checkpoint: unit + integration + eval
   - **Do**: `python3 -m unittest discover tests -v && bash tests/test-hook.sh && python3 tests/eval/run_eval.py`
   - **Verify**: All exit 0
   - **Done when**: Eval gate green alongside full suite
