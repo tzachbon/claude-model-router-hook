@@ -662,6 +662,13 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `docs(prompt): rewrite as clone and install instructions, dedup copies`
   - _Requirements: FR-43, FR-44, AC-11.2, AC-11.3_
 
+- [x] 4.8.1 [FIX 4.7] Fix: README log example format drift
+  - **Do**: Correct the README "Log" code block to match the real hookio.log format (action= first, no rec= field, no ALLOW action, OVERRIDE carries action= prefix).
+  - **Files**: README.md
+  - **Done when**: Log example matches hookio.log emissions; sync_docs --check passes
+  - **Verify**: `python3 scripts/sync_docs.py --check && ! grep -q 'rec=' README.md`
+  - **Commit**: `docs(readme): correct log example to actual hookio format`
+
 - [ ] 4.9 [VERIFY] Quality checkpoint: docs parity + tests
   - **Do**: `python3 scripts/sync_docs.py --check && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0

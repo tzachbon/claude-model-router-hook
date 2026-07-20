@@ -104,10 +104,12 @@ Config is read from a `router` block in your Claude settings, merged over built-
 Activity is written to `~/.claude/hooks/model-router-hook.log`:
 
 ```
-[2026-03-07 12:00:00] model=sonnet rec=opus action=AUTOSWITCH->opus prompt="analyze the entire..."
-[2026-03-07 12:01:00] model=opus rec=match action=ALLOW prompt="git commit changes"
-[2026-03-07 12:02:00] OVERRIDE prompt="~ keep opus for this..."
+[2026-03-07 12:00:00] action=AUTOSWITCH->opus model=sonnet effort=medium klass=architecture target_effort=high prompt="evaluate the tradeoffs betwee..."
+[2026-03-07 12:01:00] action=SUGGEST->sonnet model=haiku effort=none klass=implementation target_effort=medium prompt="build the settings panel comp..."
+[2026-03-07 12:02:00] action=OVERRIDE prompt="~ keep opus for this one"
 ```
+
+`action=` comes first, followed by any `model` / `effort` / `klass` / `target_effort` fields, then the truncated prompt snippet. `AUTOSWITCH->` lines record a settings write (autoswitch mode); `SUGGEST->` lines record a warn-mode advisory; `OVERRIDE` marks a bypassed prompt. A prompt that already matches its tier exits silently and writes no line.
 
 
 ## Known limitations
