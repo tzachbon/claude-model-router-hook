@@ -403,10 +403,17 @@ echo "--- Suite 10: PreToolUse subagent rewrite + respect ---"
 HOME_DIR=$(make_home "sonnet")
 MECH_PROMPT="rename the file src/a.py to src/b.py and fix imports"
 
-# Generic mechanical spawn: full rewrite -> routed-haiku variant + bare model alias.
-run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR"
-assert_pre_json "generic mechanical spawn rewrites to routed-haiku + model haiku" \
+# Generic mechanical spawn under a plugin install (CLAUDE_PLUGIN_ROOT set):
+# full rewrite -> plugin-scoped routed-haiku variant + bare model alias.
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_PLUGIN_ROOT=/tmp/plugin"
+assert_pre_json "plugin-context generic spawn rewrites to scoped routed-haiku + model haiku" \
     'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; u=d["updatedInput"]; assert d["permissionDecision"]=="allow"; assert u["subagent_type"]=="claude-model-router-hook:routed-haiku"; assert u["model"]=="haiku"'
+
+# Same spawn without CLAUDE_PLUGIN_ROOT (manual/unscoped install): emit the
+# bare routed-haiku name that resolves against ~/.claude/agents.
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR"
+assert_pre_json "manual-install generic spawn rewrites to unscoped routed-haiku + model haiku" \
+    'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; u=d["updatedInput"]; assert d["permissionDecision"]=="allow"; assert u["subagent_type"]=="routed-haiku"; assert u["model"]=="haiku"'
 
 # Custom subagent_type: model-only injection, subagent_type left untouched (FR-15).
 run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"my-custom-agent\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR"

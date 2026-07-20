@@ -765,7 +765,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Done when**: CI stable green on latest push
   - **Commit**: `fix(router): address CI failures` (per fix, if needed)
 
-- [ ] 5.2 Resolve review comments
+- [x] 5.2 Resolve review comments
   - **Do**: `gh pr view --comments` and `gh api` review threads; address each actionable comment with a fix commit; reply/resolve; re-run V4 suite before each push
   - **Verify**: `gh pr view --json reviewDecision` not CHANGES_REQUESTED; no unresolved actionable threads
   - **Done when**: All review comments addressed

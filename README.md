@@ -89,7 +89,20 @@ Prefix any prompt with `~` or `<` to skip classification entirely and keep the c
 
 ## Configuration
 
-Config is read from a `router` block in your Claude settings, merged over built-in defaults (project config wins over global). The schema is v2; a v1 config is migrated in memory at load time and your files are never rewritten. Key knobs:
+Config lives in `~/.claude/model-router.json` (global) and `.claude/model-router.json` inside a project (project wins), merged over built-in defaults. Both files are optional. The schema is v2; a v1 config is migrated in memory at load time and your files are never rewritten. Example:
+
+```json
+{
+  "version": 2,
+  "apply_mode": "warn",
+  "allow_fable_autoswitch": false,
+  "subagent_enforcement": "on",
+  "classifier": { "cli_fallback": true },
+  "thresholds": { "effort_warn_distance": 2 }
+}
+```
+
+Key knobs:
 
 | Key | Default | Effect |
 |---|---|---|

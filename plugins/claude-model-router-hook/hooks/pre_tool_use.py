@@ -66,10 +66,11 @@ def main():
         sys.exit(0)  # missing/unusable prompt: pass through (FR-18)
 
     subagent_type = tool_input.get("subagent_type")
-    if isinstance(subagent_type, str) and subagent_type.startswith(
-        PLUGIN_PREFIX + "routed-"
+    if isinstance(subagent_type, str) and (
+        subagent_type.startswith(PLUGIN_PREFIX + "routed-")
+        or subagent_type.startswith("routed-")
     ):
-        sys.exit(0)  # idempotency guard: already rewritten
+        sys.exit(0)  # idempotency guard: already rewritten (scoped or unscoped)
 
     cfg = config.load_config(global_path=_global_config_path())
     enforcement = cfg.get("subagent_enforcement", "on")
@@ -125,7 +126,10 @@ def main():
     updated["model"] = decision.model  # bare alias only (A-1)
     variant = VARIANTS.get((decision.model, decision.effort))
     if generic and variant:
-        updated["subagent_type"] = PLUGIN_PREFIX + variant
+        # Plugin-scoped name resolves only under a plugin install; manual
+        # installs copy the agents in unscoped, so emit the bare name there.
+        prefix = PLUGIN_PREFIX if "CLAUDE_PLUGIN_ROOT" in os.environ else ""
+        updated["subagent_type"] = prefix + variant
 
     if enforcement == "advisory":
         # Advisory mode: systemMessage only, never updatedInput (AC-3.3 shape).
