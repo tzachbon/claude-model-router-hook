@@ -652,7 +652,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Commit**: `docs(readme): describe v2 behavior with generated advisory block`
   - _Requirements: FR-44, AC-11.3, NFR-6_
 
-- [ ] 4.8 prompt.md rewrite (both copies)
+- [x] 4.8 prompt.md rewrite (both copies)
   - **Do**:
     1. Rewrite `prompt.md` and `PLUGIN/prompt.md` as clone+install instructions (no inline scripts), with advisory marker blocks populated via sync_docs.
     2. Keep both byte-identical or generated from the same source (dedup guarantee, FR-43).
