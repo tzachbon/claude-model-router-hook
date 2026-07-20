@@ -669,7 +669,7 @@ Unit tests importing real modules; new integration suites. All scripted tests ru
   - **Verify**: `python3 scripts/sync_docs.py --check && ! grep -q 'rec=' README.md`
   - **Commit**: `docs(readme): correct log example to actual hookio format`
 
-- [ ] 4.9 [VERIFY] Quality checkpoint: docs parity + tests
+- [x] 4.9 [VERIFY] Quality checkpoint: docs parity + tests
   - **Do**: `python3 scripts/sync_docs.py --check && python3 -m unittest discover tests -v && bash tests/test-hook.sh`
   - **Verify**: All exit 0
   - **Done when**: No docs drift, tests green
