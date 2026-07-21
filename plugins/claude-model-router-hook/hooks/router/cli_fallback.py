@@ -18,6 +18,11 @@ SNIPPET_MAX_CHARS = 1500
 CACHE_FILENAME = "classifier-cache.json"
 EVICT_FRACTION = 0.2
 
+# Hard ceiling on the CLI subprocess timeout. The hooks.json hook budget is 10s;
+# cap the child at 8s to keep a >=2s margin so a slow child can never outlive the
+# hook (a configured cli_timeout_seconds above this is clamped down).
+CLI_TIMEOUT_CEILING = 8
+
 # Bump when the taxonomy/classification prompt changes so stale cached
 # classes are invalidated (cache keys include this revision).
 TAXONOMY_REV = "1"
@@ -56,8 +61,14 @@ def _parse_reply(stdout):
 
 
 def _cache_key(prompt):
-    """32-hex-char sha256 of taxonomy revision + full prompt (NFR-5)."""
-    return hashlib.sha256((TAXONOMY_REV + prompt).encode("utf-8")).hexdigest()[:32]
+    """32-hex-char sha256 of taxonomy revision + the classified snippet (NFR-5).
+
+    Keyed on prompt[:SNIPPET_MAX_CHARS] (exactly the text build_prompt sends to
+    the model), not the full prompt, so the key can never drift from the payload:
+    two long prompts identical over that leading snippet share a cache entry.
+    """
+    snippet = prompt[:SNIPPET_MAX_CHARS]
+    return hashlib.sha256((TAXONOMY_REV + snippet).encode("utf-8")).hexdigest()[:32]
 
 
 def _cache_path(data_dir):
@@ -128,7 +139,9 @@ def classify_cli(prompt, config, data_dir):
     classifier_cfg = config.get("classifier") or {}
     if not classifier_cfg.get("cli_fallback", True):
         return None
-    timeout = classifier_cfg.get("cli_timeout_seconds", 8)
+    # Clamp to the hard ceiling so a large configured value cannot let the child
+    # outlive the 10s hook budget (F4).
+    timeout = min(classifier_cfg.get("cli_timeout_seconds", 8), CLI_TIMEOUT_CEILING)
     max_entries = classifier_cfg.get("cache_max_entries", 1000)
 
     key = None
