@@ -154,7 +154,9 @@ def merge(base, overlay):
     """Merge overlay onto base with v1 semantics (FR-32, AC-8.4).
 
     Per-key override; dicts merged with a shallow spread; "$schema" skipped.
-    "classes" is merged one level deeper so each class merges per class.
+    "classes" is merged one level deeper so each class merges per class, and a
+    class "target" dict is merged one level deeper still so a partial target
+    override (e.g. only "effort") never drops the inherited "model".
     Returns a new dict; inputs are not mutated.
     """
     result = copy.deepcopy(base)
@@ -171,7 +173,16 @@ def merge(base, overlay):
                 if isinstance(class_cfg, dict) and isinstance(
                     merged_classes.get(name), dict
                 ):
-                    merged_classes[name] = {**merged_classes[name], **class_cfg}
+                    merged_class = {**merged_classes[name], **class_cfg}
+                    base_target = merged_classes[name].get("target")
+                    overlay_target = class_cfg.get("target")
+                    if isinstance(base_target, dict) and isinstance(
+                        overlay_target, dict
+                    ):
+                        # Deep-merge target so a partial override keeps the base
+                        # model/effort it did not explicitly replace.
+                        merged_class["target"] = {**base_target, **overlay_target}
+                    merged_classes[name] = merged_class
                 else:
                     merged_classes[name] = class_cfg
             result[key] = merged_classes
@@ -269,8 +280,14 @@ def v1_hint_due(data_dir):
 
 
 def safe_regex_match(patterns, text):
-    """Test if any pattern matches text, silently skipping invalid regexes."""
+    """Test if any pattern matches text, silently skipping invalid entries.
+
+    Non-string entries (e.g. a numeric or null pattern in user config) are
+    skipped rather than raised so one bad list item cannot disable routing.
+    """
     for p in patterns:
+        if not isinstance(p, str):
+            continue
         try:
             if re.search(p, text):
                 return True

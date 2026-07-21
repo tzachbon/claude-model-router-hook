@@ -233,6 +233,14 @@ class TestSafeRegexMatch(unittest.TestCase):
     def test_empty_list(self):
         self.assertFalse(safe_regex_match([], "anything"))
 
+    def test_non_string_pattern_skipped(self):
+        """Non-string pattern entries (e.g. 123, null) are skipped, not raised (F3)."""
+        self.assertFalse(safe_regex_match([123, None], "test"))
+
+    def test_non_string_mixed_with_valid_still_matches(self):
+        """A valid pattern still matches even when non-string entries are present (F3)."""
+        self.assertTrue(safe_regex_match([123, r"\blint\b", None], "please lint the code"))
+
 
 # ── Tests: opus patterns ──────────────────────────────────────────────────
 

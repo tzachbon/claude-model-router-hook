@@ -5,6 +5,7 @@ Unit tests for the v2 router modules. Imports the real router package
 Phase 3.1 covers router.ladder: Decision invariants and model-string utilities.
 """
 
+import copy
 import json
 import os
 import subprocess
@@ -47,6 +48,8 @@ from router.policy import (  # noqa: E402
     target_for_class,
     main_prompt_decision,
     apply_gates,
+    DEFAULT_GATE_PATTERNS,
+    DEFAULT_FLOOR_PATTERNS,
 )
 from router import cli_fallback  # noqa: E402
 from router.cli_fallback import classify_cli  # noqa: E402
@@ -312,6 +315,67 @@ class TestMerge(unittest.TestCase):
         result = merge({"x": {"a": 1}}, {"x": "scalar"})
         self.assertEqual(result["x"], "scalar")
 
+    def test_partial_target_override_deep_merged(self):
+        """F1: an effort-only target override keeps the inherited model."""
+        base = {"classes": {"debugging": {"target": {"model": "sonnet", "effort": "high"}}}}
+        overlay = {"classes": {"debugging": {"target": {"effort": "low"}}}}
+        result = merge(base, overlay)
+        self.assertEqual(
+            result["classes"]["debugging"]["target"],
+            {"model": "sonnet", "effort": "low"},
+        )
+
+    def test_model_only_target_override_keeps_deep_merge(self):
+        """F1: a model-only override deep-merges over the inherited effort."""
+        base = {"classes": {"debugging": {"target": {"model": "sonnet", "effort": "high"}}}}
+        overlay = {"classes": {"debugging": {"target": {"model": "haiku"}}}}
+        result = merge(base, overlay)
+        self.assertEqual(
+            result["classes"]["debugging"]["target"],
+            {"model": "haiku", "effort": "high"},
+        )
+
+
+class TestClassTargetResolution(unittest.TestCase):
+    """F1: target_for_class is robust to deep-merged and invalid targets."""
+
+    def _cfg_with_target(self, klass, target_override):
+        cfg = copy.deepcopy(DEFAULTS)
+        overlay = {"classes": {klass: {"target": target_override}}}
+        return merge(cfg, overlay)
+
+    def test_effort_only_override_keeps_model(self):
+        cfg = self._cfg_with_target("debugging", {"effort": "low"})
+        decision = target_for_class("debugging", cfg)
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.model, "sonnet")
+        self.assertEqual(decision.effort, "low")
+
+    def test_model_switch_to_haiku_drops_inherited_effort(self):
+        """A haiku target must not raise even if a stale effort was inherited."""
+        cfg = self._cfg_with_target("debugging", {"model": "haiku"})
+        decision = target_for_class("debugging", cfg)  # must not raise
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.model, "haiku")
+        self.assertIsNone(decision.effort)
+
+    def test_invalid_model_returns_none(self):
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["classes"]["debugging"]["target"] = {"model": "gpt-5"}
+        self.assertIsNone(target_for_class("debugging", cfg))
+
+    def test_missing_model_returns_none(self):
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["classes"]["debugging"]["target"] = {"effort": "high"}
+        self.assertIsNone(target_for_class("debugging", cfg))
+
+    def test_main_prompt_decision_skips_invalid_target(self):
+        """A None target is treated as pass-through (no routing), not a crash."""
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["classes"]["debugging"]["target"] = {"model": "not-a-tier"}
+        result = main_prompt_decision("debugging", "sonnet", "high", cfg, _score(5))
+        self.assertIsNone(result)
+
 
 # ── Tests: resolve_list extend/replace/remove (FR-33) ──────────────────────
 
@@ -494,14 +558,42 @@ class TestExtremeEscalation(unittest.TestCase):
         self.assertGreater(result.scores["extreme"], result.scores["architecture"])
 
     def test_no_escalation_when_architecture_not_top(self):
-        """Extreme markers present but implementation dominates: extreme stays 0."""
+        """Extreme markers present but architecture below top: extreme stays 0.
+
+        The markers here ("company-wide", "phased rollout") are not also
+        architecture keywords, so architecture stays at 0 while implementation
+        dominates; escalation only fires when architecture is among the top
+        scorers (F5 narrow fix).
+        """
         prompt = (
-            "build implement create fix write component migration plan "
-            "multi-system epic"
+            "build implement create fix write component company-wide phased rollout"
         )
         result = score(prompt, self.cfg)
         self.assertEqual(result.top, "implementation")
+        self.assertEqual(result.scores["architecture"], 0.0)
         self.assertEqual(result.scores["extreme"], 0.0)
+
+    def test_tie_primary_pick_unchanged_without_markers(self):
+        """F5: architecture==debugging tie keeps the strict-order pick (debugging)
+        when extreme markers do not clear the escalation threshold."""
+        prompt = "the deadlock tradeoff company-wide"  # one marker, below MIN
+        result = score(prompt, self.cfg)
+        self.assertEqual(result.scores["debugging"], result.scores["architecture"])
+        self.assertEqual(result.top, "debugging")
+        self.assertEqual(result.scores["extreme"], 0.0)
+
+    def test_tie_with_markers_escalates_to_extreme(self):
+        """F5: an architecture-tied (with debugging) prompt still escalates to
+        extreme when >= EXTREME_ESCALATION_MIN extreme markers are present.
+
+        Before the fix, escalation was gated on the tie-break-earlier pick being
+        exactly architecture, so this tie routed to debugging (sonnet) and never
+        reached extreme."""
+        prompt = "the deadlock tradeoff company-wide phased rollout"
+        result = score(prompt, self.cfg)
+        self.assertEqual(result.scores["debugging"], result.scores["architecture"])
+        self.assertEqual(result.top, "extreme")
+        self.assertGreater(result.scores["extreme"], result.scores["architecture"])
 
     def test_single_extreme_marker_below_min_no_escalation(self):
         """Architecture top with fewer than EXTREME_ESCALATION_MIN markers: no bump."""
@@ -519,6 +611,29 @@ class TestExtremeEscalation(unittest.TestCase):
         result = score(prompt, self.cfg)
         bump = result.scores["extreme"] - result.scores["architecture"]
         self.assertLessEqual(bump, EXTREME_CAP)
+
+
+# ── Tests: non-string signal entries are ignored, never raise (F3) ─────────
+
+class TestNonStringSignals(unittest.TestCase):
+    """A numeric/boolean/null keyword or pattern in config must not crash scoring."""
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_non_string_keywords_and_patterns_scored_without_raising(self):
+        self.cfg["classes"]["architecture"]["keywords"] = [5, True, "tradeoff"]
+        self.cfg["classes"]["architecture"]["patterns"] = [123, None, r"\bredesign\b"]
+        # Must not raise; the valid entries still contribute to the score.
+        result = score("evaluate the tradeoff and redesign the system", self.cfg)
+        self.assertGreater(result.scores["architecture"], 0.0)
+
+    def test_all_non_string_signals_score_zero(self):
+        self.cfg["classes"]["debugging"]["mode"] = "replace"
+        self.cfg["classes"]["debugging"]["keywords"] = [5, True]
+        self.cfg["classes"]["debugging"]["patterns"] = [123, None]
+        result = score("a plain sentence with no signals", self.cfg)
+        self.assertEqual(result.scores["debugging"], 0.0)
 
 
 # ── Tests: abstain and mechanical length gate (FR-24, AC-7.1) ──────────────
@@ -785,6 +900,65 @@ class TestEffortFloors(unittest.TestCase):
         self.assertIs(gated, decision)
 
 
+# ── Tests: gate/floor pattern resolution parity with classes (F9) ──────────
+
+class TestGateFloorResolutionParity(unittest.TestCase):
+    """capability_gates / effort_floors resolve via config.resolve_list, so
+    extend/replace/remove_patterns behave exactly as they do for classes."""
+
+    def setUp(self):
+        self.cfg = _det_cfg()
+
+    def test_remove_default_gate_pattern_disables_bump(self):
+        """remove_patterns drops a shipped gate default (parity with class remove)."""
+        self.cfg["capability_gates"] = {
+            "mode": "extend",
+            "patterns": [],
+            "remove_patterns": [r"\bmulti[-\s]?agent\b"],
+        }
+        decision = target_for_class("mechanical", self.cfg)  # haiku
+        gated = apply_gates("run a multi-agent workflow", decision, self.cfg)
+        self.assertEqual(gated.model, "haiku")  # default gate removed -> no bump
+
+    def test_extend_gate_pattern_adds_bump(self):
+        self.cfg["capability_gates"] = {
+            "mode": "extend",
+            "patterns": [r"\bwidgetize\b"],
+            "remove_patterns": [],
+        }
+        decision = target_for_class("mechanical", self.cfg)
+        gated = apply_gates("please widgetize the thing", decision, self.cfg)
+        self.assertEqual(gated.model, "sonnet")
+
+    def test_replace_mode_discards_default_floor_patterns(self):
+        self.cfg["effort_floors"] = {
+            "mode": "replace",
+            "patterns": [r"\bcustomfloor\b"],
+            "floor": "high",
+        }
+        decision = Decision("sonnet", "low", "implementation", "heuristic")
+        # A default floor phrase no longer raises the floor under replace mode.
+        gated = apply_gates("run the database migration on prod", decision, self.cfg)
+        self.assertEqual(gated.effort, "low")
+        # The custom floor pattern does raise it.
+        gated2 = apply_gates("apply the customfloor step", decision, self.cfg)
+        self.assertEqual(gated2.effort, "high")
+
+    def test_resolution_matches_config_resolve_list(self):
+        """The gate resolver is config.resolve_list itself (no divergent copy)."""
+        from router.config import resolve_list
+        edit = {
+            "mode": "extend",
+            "patterns": [r"\bx\b"],
+            "remove_patterns": [DEFAULT_GATE_PATTERNS[0]],
+        }
+        resolved = resolve_list(edit, "patterns", DEFAULT_GATE_PATTERNS)
+        self.assertNotIn(DEFAULT_GATE_PATTERNS[0], resolved)
+        self.assertIn(r"\bx\b", resolved)
+        self.assertIn(DEFAULT_FLOOR_PATTERNS[0],
+                      resolve_list({}, "patterns", DEFAULT_FLOOR_PATTERNS))
+
+
 # ── Tests: effort_warn_distance match logic (AC-1.1/1.2 amendment) ──────────
 
 class TestEffortWarnDistance(unittest.TestCase):
@@ -883,6 +1057,24 @@ class TestCliFallback(unittest.TestCase):
             self.assertIsNone(classify_cli("anything", cfg, None))
         run.assert_not_called()
 
+    def test_timeout_clamped_to_ceiling(self):
+        """A configured cli_timeout_seconds above the ceiling is clamped down (F4)."""
+        cfg = {"classifier": {"cli_fallback": True, "cli_timeout_seconds": 20}}
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "architecture")) as run:
+            classify_cli("design a system", cfg, None)
+        _, kwargs = run.call_args
+        self.assertLessEqual(kwargs["timeout"], cli_fallback.CLI_TIMEOUT_CEILING)
+        self.assertEqual(kwargs["timeout"], cli_fallback.CLI_TIMEOUT_CEILING)
+
+    def test_timeout_below_ceiling_preserved(self):
+        cfg = {"classifier": {"cli_fallback": True, "cli_timeout_seconds": 3}}
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "architecture")) as run:
+            classify_cli("design a system", cfg, None)
+        _, kwargs = run.call_args
+        self.assertEqual(kwargs["timeout"], 3)
+
 
 class TestCliFallbackCache(unittest.TestCase):
     """classify_cli disk cache: hit, eviction, corruption, privacy (mocked)."""
@@ -952,6 +1144,22 @@ class TestCliFallbackCache(unittest.TestCase):
         self.assertEqual(len(cache), 5)
         self.assertNotIn(cli_fallback._cache_key(prompts[0]), cache)
         self.assertIn(cli_fallback._cache_key(prompts[5]), cache)
+
+    def test_cache_hit_on_shared_snippet_prefix(self):
+        """Two prompts identical over the first SNIPPET_MAX_CHARS but differing
+        after share a cache entry, so the second call is a hit (F8)."""
+        base = "design the whole auth architecture tradeoffs and data model " * 40
+        self.assertGreater(len(base), cli_fallback.SNIPPET_MAX_CHARS)
+        p1 = base + " UNIQUE_TAIL_ONE"
+        p2 = base + " UNIQUE_TAIL_TWO"
+        self.assertNotEqual(p1, p2)
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "architecture")) as run:
+            first = classify_cli(p1, self.cfg, self.tmpdir)
+            second = classify_cli(p2, self.cfg, self.tmpdir)
+        self.assertEqual(first, "architecture")
+        self.assertEqual(second, "architecture")
+        self.assertEqual(run.call_count, 1)  # second served from cache
 
     def test_cache_file_has_hashes_and_classes_only(self):
         """Cache stores hash keys + class/timestamp, never raw prompt text (NFR-5)."""

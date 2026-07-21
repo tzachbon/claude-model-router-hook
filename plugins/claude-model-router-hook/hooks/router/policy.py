@@ -2,7 +2,7 @@
 
 import dataclasses
 
-from .config import safe_regex_match
+from .config import resolve_list, safe_regex_match
 from .ladder import EFFORTS, TIERS, Decision, detect_tier, effort_distance
 
 # Same-tier cells where effort escalates past the class target (effort-first):
@@ -27,14 +27,20 @@ DEFAULT_FLOOR_PATTERNS = [
 
 
 def target_for_class(klass, cfg, source="heuristic"):
-    """Class target Decision (used verbatim for subagent spawns). Haiku carries no effort."""
+    """Class target Decision (used verbatim for subagent spawns), or None.
+
+    Returns None (fail-safe skip) when the configured target model is not a
+    valid ladder tier: a bad/missing model would otherwise raise inside Decision
+    and, via fail-open, disable all routing silently. Haiku targets always carry
+    effort None, since a deep-merged partial override can leave an inherited
+    effort on a model that was switched to haiku.
+    """
     target = cfg["classes"][klass]["target"]
-    return Decision(
-        model=target["model"],
-        effort=target.get("effort"),
-        klass=klass,
-        source=source,
-    )
+    model = target.get("model")
+    if model not in TIERS:
+        return None
+    effort = None if model == "haiku" else target.get("effort")
+    return Decision(model=model, effort=effort, klass=klass, source=source)
 
 
 def main_prompt_decision(klass, current_model, current_effort, cfg, score):
@@ -49,6 +55,8 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score):
       the target effort, same effort-distance match rule.
     """
     target = target_for_class(klass, cfg)
+    if target is None:
+        return None  # invalid class target: fail-safe skip (pass-through)
     thresholds = cfg.get("thresholds", {})
     warn_distance = thresholds.get("effort_warn_distance", 2)
     downroute_margin = thresholds.get("downroute_margin", 4)
@@ -84,18 +92,6 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score):
     return Decision(current_tier, target.effort, klass, target.source)
 
 
-def _resolve_patterns(section_cfg, defaults):
-    """Merge shipped default patterns with config (extend/replace/remove)."""
-    if not isinstance(section_cfg, dict):
-        section_cfg = {}
-    extra = section_cfg.get("patterns") or []
-    if section_cfg.get("mode") == "replace":
-        return list(extra)
-    items = list(defaults) + [x for x in extra if x not in defaults]
-    removed = set(section_cfg.get("remove_patterns") or [])
-    return [x for x in items if x not in removed]
-
-
 def _max_effort(a, b):
     """Higher of two effort levels; either may be None."""
     if a is None:
@@ -118,14 +114,16 @@ def apply_gates(prompt, decision, cfg):
     floors_cfg = cfg.get("effort_floors") or {}
 
     floor = "high" if decision.klass == "debugging" else None
-    floor_patterns = _resolve_patterns(floors_cfg, DEFAULT_FLOOR_PATTERNS)
+    # Resolve gate/floor patterns through config.resolve_list so extend/replace/
+    # remove_patterns behave identically to per-class list resolution (F9).
+    floor_patterns = resolve_list(floors_cfg, "patterns", DEFAULT_FLOOR_PATTERNS)
     if safe_regex_match(floor_patterns, prompt_lower):
         cfg_floor = floors_cfg.get("floor", "high")
         if cfg_floor not in EFFORTS:
             cfg_floor = "high"
         floor = _max_effort(floor, cfg_floor)
 
-    gate_patterns = _resolve_patterns(cfg.get("capability_gates"), DEFAULT_GATE_PATTERNS)
+    gate_patterns = resolve_list(cfg.get("capability_gates"), "patterns", DEFAULT_GATE_PATTERNS)
     min_sonnet = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
 
     model, effort = decision.model, decision.effort

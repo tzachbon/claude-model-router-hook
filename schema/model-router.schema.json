@@ -134,7 +134,8 @@
             "cli_timeout_seconds": {
               "type": "integer",
               "default": 8,
-              "description": "Timeout in seconds for the CLI classifier subprocess."
+              "maximum": 8,
+              "description": "Timeout in seconds for the CLI classifier subprocess. Clamped to at most 8s to stay under the hook budget."
             },
             "cache_max_entries": {
               "type": "integer",
@@ -267,6 +268,7 @@
           "type": "object",
           "additionalProperties": false,
           "description": "Routing target for this class.",
+          "required": ["model"],
           "properties": {
             "model": {
               "type": "string",
