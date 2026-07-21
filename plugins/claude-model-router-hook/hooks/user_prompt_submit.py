@@ -92,6 +92,11 @@ def main():
         sys.exit(0)  # match
 
     _, suffix = ladder.split_suffix(current_model)  # suffix preserved (FR-6)
+    if decision.model != ladder.detect_tier(current_model):
+        # Tier change: the suffix belongs to the old tier (e.g. a [1m] context
+        # variant); reattaching it to a new alias yields invalid strings like
+        # "haiku[1m]". Only carry the suffix when the tier is unchanged (F2).
+        suffix = ""
     suggestion = decision.model + suffix
 
     # Autoswitch: write the default for new sessions (FR-9, FR-10); a fable

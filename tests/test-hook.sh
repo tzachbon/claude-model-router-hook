@@ -326,13 +326,15 @@ assert_stderr_contains "extreme warn emits /effort suggestion" "/effort"
 
 rm -rf "$HOME_DIR"
 
-# AC-1.4: [1m] suffix on the session model carries into the /model suggestion,
-# alongside the /effort part.
+# F2 / AC-1.4: on a TIER CHANGE the [1m] suffix belongs to the old tier and is
+# dropped, so the suggestion is the bare new alias (never "fable[1m]"); it still
+# carries /effort. The warn line reads "/model fable and /effort ..." so the
+# needle "/model fable and" fails if the suffix were reattached ("fable[1m] and").
 HOME_1M=$(make_home "sonnet[1m]")
 
 run_hook "$EXTREME_PROMPT" "$HOME_1M"
-assert_stderr_contains "[1m] suffix preserved in /model fable suggestion" "/model fable[1m]"
-assert_stderr_contains "[1m] suffix suggestion still carries /effort" "/effort"
+assert_stderr_contains "tier change drops [1m] suffix from /model fable" "/model fable and"
+assert_stderr_contains "tier-change suggestion still carries /effort" "/effort"
 
 rm -rf "$HOME_1M"
 
@@ -352,8 +354,20 @@ assert_routes_to "effort distance 2 mismatch warns" "opus"
 assert_stderr_contains "effort distance 2 warn suggests /effort xhigh" "/effort xhigh"
 rm -rf "$HOME_D2"
 
+# F2: an effort-only change on the SAME tier keeps the [1m] suffix. opus[1m]
+# with an architecture prompt stays opus (tier unchanged) and only escalates
+# effort, so the suggestion carries the suffix: "/model opus[1m]".
+HOME_SAME=$(make_home_effort "opus[1m]" "medium")
+run_hook "$ARCH_PROMPT" "$HOME_SAME"
+assert_stderr_contains "same-tier effort change keeps [1m] suffix on /model opus" "/model opus[1m]"
+assert_stderr_contains "same-tier effort change still suggests /effort xhigh" "/effort xhigh"
+rm -rf "$HOME_SAME"
+
 # ── PreToolUse runner + assertions (FR-41, AC-4.x, AC-5.1, AC-10.5) ──────────
 PRE_HOOK="$(cd "$(dirname "$0")/.." && pwd)/plugins/claude-model-router-hook/hooks/pre_tool_use.py"
+# Real plugin root: contains agents/routed-*.md so the scoped-name existence
+# check (F6) resolves to the plugin-scoped variant.
+PLUGIN_ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)/plugins/claude-model-router-hook"
 
 # Run pre_tool_use.py with a tool-event JSON payload and HOME.
 # Sets PRE_STDOUT (raw stdout JSON) and PRE_EXIT. Optional $3 = extra env
@@ -403,11 +417,21 @@ echo "--- Suite 10: PreToolUse subagent rewrite + respect ---"
 HOME_DIR=$(make_home "sonnet")
 MECH_PROMPT="rename the file src/a.py to src/b.py and fix imports"
 
-# Generic mechanical spawn under a plugin install (CLAUDE_PLUGIN_ROOT set):
-# full rewrite -> plugin-scoped routed-haiku variant + bare model alias.
-run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_PLUGIN_ROOT=/tmp/plugin"
+# Generic mechanical spawn under a plugin install (CLAUDE_PLUGIN_ROOT points at
+# the real plugin, so agents/routed-haiku.md exists): full rewrite -> plugin-
+# scoped routed-haiku variant + bare model alias.
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT_DIR"
 assert_pre_json "plugin-context generic spawn rewrites to scoped routed-haiku + model haiku" \
     'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; u=d["updatedInput"]; assert d["permissionDecision"]=="allow"; assert u["subagent_type"]=="claude-model-router-hook:routed-haiku"; assert u["model"]=="haiku"'
+
+# F6: CLAUDE_PLUGIN_ROOT is set but the shipped agent file is absent (host
+# substituted the var textually or it points elsewhere): fall back to the bare
+# name so the rewrite still resolves against ~/.claude/agents.
+MISSING_ROOT=$(mktemp -d)
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_PLUGIN_ROOT=$MISSING_ROOT"
+assert_pre_json "plugin root without agents file falls back to bare routed-haiku" \
+    'import json,sys; u=json.load(sys.stdin)["hookSpecificOutput"]["updatedInput"]; assert u["subagent_type"]=="routed-haiku"; assert u["model"]=="haiku"'
+rm -rf "$MISSING_ROOT"
 
 # Same spawn without CLAUDE_PLUGIN_ROOT (manual/unscoped install): emit the
 # bare routed-haiku name that resolves against ~/.claude/agents.
@@ -423,6 +447,12 @@ assert_pre_json "custom subagent_type gets model-only injection, type untouched"
 # Explicit caller model: respected, no updatedInput (locked decision 4).
 run_pre_hook '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"opus","prompt":"rename file a to b"}}' "$HOME_DIR"
 assert_pre_json "explicit caller model yields no updatedInput" \
+    'import json,sys; raw=sys.stdin.read(); d=json.loads(raw) if raw.strip() else {}; assert "updatedInput" not in d.get("hookSpecificOutput",{})'
+
+# F7: an explicit EMPTY-STRING model is still an explicit choice; respect it
+# (no injection), exit 0, no updatedInput.
+run_pre_hook '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"","prompt":"rename file a to b"}}' "$HOME_DIR"
+assert_pre_json "explicit empty-string model yields no updatedInput" \
     'import json,sys; raw=sys.stdin.read(); d=json.loads(raw) if raw.strip() else {}; assert "updatedInput" not in d.get("hookSpecificOutput",{})'
 
 # Abstain (unclassifiable prompt): pass-through, no updatedInput (AC-4.3).

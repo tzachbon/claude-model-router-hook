@@ -83,10 +83,13 @@ def main():
     if klass is None:
         sys.exit(0)  # abstain: pass through (AC-4.3)
 
-    decision = policy.apply_gates(prompt, policy.target_for_class(klass, cfg), cfg)
+    target = policy.target_for_class(klass, cfg)
+    if target is None:
+        sys.exit(0)  # invalid class target: pass through (fail-safe skip)
+    decision = policy.apply_gates(prompt, target, cfg)
 
     explicit = tool_input.get("model")
-    if explicit:
+    if explicit is not None:
         # Explicit caller model: NO injection, respect it (locked decision 4).
         if (
             isinstance(explicit, str)
@@ -128,7 +131,17 @@ def main():
     if generic and variant:
         # Plugin-scoped name resolves only under a plugin install; manual
         # installs copy the agents in unscoped, so emit the bare name there.
-        prefix = PLUGIN_PREFIX if "CLAUDE_PLUGIN_ROOT" in os.environ else ""
+        # Use the scoped prefix only when the shipped agent file actually exists
+        # under CLAUDE_PLUGIN_ROOT: some hosts substitute ${CLAUDE_PLUGIN_ROOT}
+        # textually in hooks.json without exporting it, and the bare name still
+        # resolves against ~/.claude/agents (F6). Residual assumption: a plugin
+        # install exports CLAUDE_PLUGIN_ROOT into the hook process env.
+        prefix = ""
+        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        if plugin_root and os.path.exists(
+            os.path.join(plugin_root, "agents", variant + ".md")
+        ):
+            prefix = PLUGIN_PREFIX
         updated["subagent_type"] = prefix + variant
 
     if enforcement == "advisory":
