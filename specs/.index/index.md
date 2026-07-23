@@ -15,7 +15,7 @@ See [index-state.json](./index-state.json) for machine-readable data.
 
 | Spec | Directory | Phase | Status |
 |------|-----------|-------|--------|
-| router-modernization | ./specs | execution | 14/74 tasks |
+| router-modernization | ./specs | execution | 76/76 tasks |
 
 ---
 

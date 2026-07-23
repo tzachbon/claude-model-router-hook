@@ -48,7 +48,7 @@ layout: center
 
 <h2 class="text-3xl font-bold text-amber-400 mb-8 text-center">How It Works</h2>
 
-<div class="grid grid-cols-2 gap-10 max-w-4xl">
+<div class="grid grid-cols-3 gap-8 max-w-5xl">
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-6">
 <h3 class="text-cyan-400 text-lg font-semibold mb-3">SessionStart</h3>
 <p class="opacity-70 text-sm leading-relaxed">Injects tier rules as a system message into every session — sub-agents learn which model to use for each task type.</p>
@@ -57,10 +57,14 @@ layout: center
 <h3 class="text-cyan-400 text-lg font-semibold mb-3">UserPromptSubmit</h3>
 <p class="opacity-70 text-sm leading-relaxed">Classifies each prompt heuristics-first (keyword + regex), compares against current model, and warns on a mismatch. Autoswitch is opt-in and writes settings for new sessions only.</p>
 </div>
+<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-6">
+<h3 class="text-cyan-400 text-lg font-semibold mb-3">PreToolUse</h3>
+<p class="opacity-70 text-sm leading-relaxed">Fires on sub-agent spawns (Agent/Task) and deterministically rewrites the sub-agent's model/effort to the routed tier. Enforcement, not just advice.</p>
+</div>
 </div>
 
 <!--
-Two hooks, that's it. The first one fires at session start and injects tier rules so sub-agents know which model to pick, and a PreToolUse hook enforces the tier on spawned sub-agents. The second fires on every prompt. It classifies what you're asking, checks the current model, and warns if there's a mismatch. Warn is the default; autoswitch is opt-in and only affects new sessions. Classification is heuristics-first with an optional headless Claude CLI fallback that you can disable; no API key is used.
+Three hooks. SessionStart fires once and injects tier rules so sub-agents know which model to pick. UserPromptSubmit fires on every prompt: it classifies what you're asking, checks the current model, and warns if there's a mismatch. PreToolUse fires when a sub-agent is spawned and enforces the tier on it. Warn is the default; autoswitch is opt-in and only affects new sessions. Classification is heuristics-first with an optional headless Claude CLI fallback that you can disable; no API key is used.
 -->
 
 ---

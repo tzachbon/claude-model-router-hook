@@ -162,7 +162,7 @@ Covers: US-1, US-2
 | FR-3 | Effort levels: low/medium/high/xhigh/max; omitted when model=haiku | High |
 | FR-4 | Effort-first policy: within-tier effort modulation preferred; tier change only at score extremes | High |
 | FR-5 | Asymmetric thresholds: down-routing requires stronger evidence than up-routing (down-route errors are the costly ones) | High |
-| FR-6 | Current-tier detection extended with fable substring; suffix tags (`[1m]`) preserved on suggested/injected models | High |
+| FR-6 | Current-tier detection extended with fable substring; suffix tags (`[1m]`) preserved on warn suggestions and settings writes. Injected Agent-tool models are bare aliases by design (the Agent model enum is alias-only), so no suffix is carried there. | High |
 | FR-7 | Length/single-signal influence capped so degenerate inputs cannot force the top tier | Medium |
 
 ### Apply modes

@@ -329,7 +329,7 @@ One-time hint: marker file `${CLAUDE_PLUGIN_DATA}/v1-hint-shown`; when due, hint
 
 ## Plugin-Shipped Agent Variants (FR-16)
 
-`plugins/claude-model-router-hook/agents/` (referenced as `claude-model-router-hook:<name>` in `updatedInput.subagent_type`):
+`plugins/claude-model-router-hook/agents/` (referenced in `updatedInput.subagent_type`). The rewrite uses the plugin-scoped name `claude-model-router-hook:<name>` only when the shipped agent file exists under `CLAUDE_PLUGIN_ROOT` (a plugin install); for manual installs the bare `routed-*` name is emitted so it resolves against `~/.claude/agents` (matches `pre_tool_use.py`):
 
 | File | Frontmatter | Used for |
 |---|---|---|
@@ -354,7 +354,7 @@ Body: identical minimal general-purpose text ("Complete the delegated task exact
 
 ## CLI Fallback Design (FR-25..FR-28)
 
-Prompt template (truncated to first 1500 chars of the user prompt; full prompt hashed for cache key):
+Prompt template (truncated to first 1500 chars of the user prompt; that same classified snippet, not the full prompt, is hashed for the cache key):
 
 ```
 Classify this coding-assistant request into exactly one class.
@@ -374,7 +374,7 @@ Request:
 - Invocation: `subprocess.run(["claude", "-p", template, "--model", "haiku"], timeout=cfg.cli_timeout_seconds, env={**os.environ, "CLAUDE_MODEL_ROUTER_CHILD": "1"})`. The env guard makes all our hooks in the child headless session exit 0 immediately (recursion protection; headless mode runs hooks).
 - Parse: strip/lower first token; must be in CLASSES + abstain, else discard (fail-open to heuristic).
 - Fail-open ladder (AC-7.4): CLI missing (FileNotFoundError) / non-zero exit / timeout / garbage output -> return None -> heuristic low-confidence decision applies.
-- Cache (`${CLAUDE_PLUGIN_DATA}/classifier-cache.json`): `{sha256(taxonomy_rev + prompt).hexdigest()[:32]: {"c": class, "t": epoch}}`. Stores hash + class only, never prompt text (NFR-5). Max `cache_max_entries` (1000); on overflow evict oldest 20%. Corrupt/unreadable -> discard and rewrite (NFR-9). Writes via tempfile + `os.replace` (atomic). `CLAUDE_PLUGIN_DATA` unset -> skip caching entirely (still functional).
+- Cache (`${CLAUDE_PLUGIN_DATA}/classifier-cache.json`): `{sha256(taxonomy_rev + snippet).hexdigest()[:32]: {"c": class, "t": epoch}}` where `snippet` is the classified `prompt[:1500]` sent to the model, so the key can never drift from the payload. Stores hash + class only, never prompt text (NFR-5). Max `cache_max_entries` (1000); on overflow evict oldest 20%. Corrupt/unreadable -> discard and rewrite (NFR-9). Writes via tempfile + `os.replace` (atomic). `CLAUDE_PLUGIN_DATA` unset -> skip caching entirely (still functional).
 - Disable knob: `classifier.cli_fallback: false` -> heuristics-only, fully offline (AC-7.6, NFR-7).
 
 ## Autoswitch Design (FR-9..FR-11, from A-6)
