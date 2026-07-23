@@ -2,7 +2,7 @@
 
 import dataclasses
 
-from .config import resolve_list, safe_regex_match
+from .config import DEFAULTS, resolve_list, safe_regex_match
 from .ladder import EFFORTS, TIERS, Decision, detect_tier, effort_distance
 
 # Same-tier cells where effort escalates past the class target (effort-first):
@@ -39,11 +39,19 @@ def target_for_class(klass, cfg, source="heuristic"):
     model = target.get("model")
     if model not in TIERS:
         return None
-    effort = None if model == "haiku" else target.get("effort")
+    if model == "haiku":
+        effort = None
+    else:
+        effort = target.get("effort")
+        # An invalid effort string (e.g. "ultra") would raise inside Decision and,
+        # via fail-open, silently disable routing. Fall back to the shipped default
+        # effort for this class instead (None only for a haiku default).
+        if effort is not None and effort not in EFFORTS:
+            effort = DEFAULTS["classes"].get(klass, {}).get("target", {}).get("effort")
     return Decision(model=model, effort=effort, klass=klass, source=source)
 
 
-def main_prompt_decision(klass, current_model, current_effort, cfg, score):
+def main_prompt_decision(klass, current_model, current_effort, cfg, score, prompt=""):
     """Full 5x4 matrix: (class, current tier) -> Decision or None (match / guarded).
 
     Rules (design "(model, effort) output matrix" + Requirements Amendments):
@@ -57,6 +65,7 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score):
     target = target_for_class(klass, cfg)
     if target is None:
         return None  # invalid class target: fail-safe skip (pass-through)
+    target = apply_gates(prompt, target, cfg)
     thresholds = cfg.get("thresholds", {})
     warn_distance = thresholds.get("effort_warn_distance", 2)
     downroute_margin = thresholds.get("downroute_margin", 4)

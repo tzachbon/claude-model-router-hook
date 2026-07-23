@@ -84,12 +84,18 @@ def main():
         sys.exit(0)  # abstain
 
     decision = policy.main_prompt_decision(
-        klass, current_model, current_effort, cfg, score
+        klass, current_model, current_effort, cfg, score, prompt
     )
     if decision is None:
         if hint:
             print(json.dumps({"systemMessage": hint}))
         sys.exit(0)  # match
+
+    # Apply capability gates and effort floors on the main-prompt path too, so
+    # handoff/multi-agent gating (min sonnet) and data-handling/debugging floors
+    # fire here and not only on the subagent path (F1). Gating is monotonic and
+    # idempotent, so an already-gated decision passes through unchanged.
+    decision = policy.apply_gates(prompt, decision, cfg)
 
     _, suffix = ladder.split_suffix(current_model)  # suffix preserved (FR-6)
     if decision.model != ladder.detect_tier(current_model):

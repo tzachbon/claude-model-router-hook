@@ -13,6 +13,7 @@ import unittest
 # Add hooks/ to import path so we can import the router package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "hooks"))
 from router.config import DEFAULTS, load_config, migrate_v1, resolve_list, safe_regex_match
+from router import taxonomy
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -255,6 +256,69 @@ class TestOpusPatterns(unittest.TestCase):
     def test_patterns_default_empty(self):
         result = resolve_list({}, "patterns", [])
         self.assertEqual(result, [])
+
+
+# ── Tests: config normalization (F2) ──────────────────────────────────────
+
+class TestNormalizeConfig(unittest.TestCase):
+    """Merged config values are coerced to expected types, else fall back to
+    DEFAULTS, so free-form user JSON can never crash or silently disable the
+    router."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def _load(self, data):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, data)
+        return load_config(global_path=global_f, cwd=self.tmpdir)
+
+    def test_string_threshold_coerced_to_int(self):
+        cfg = self._load({"version": 2, "thresholds": {"mechanical_max_words": "60"}})
+        self.assertEqual(cfg["thresholds"]["mechanical_max_words"], 60)
+        self.assertIsInstance(cfg["thresholds"]["mechanical_max_words"], int)
+
+    def test_string_threshold_classifies_without_crashing(self):
+        cfg = self._load({"version": 2, "thresholds": {"mechanical_max_words": "60"}})
+        # A short mechanical prompt still classifies with the honored int bound
+        # (a string "60" would raise on the int comparison in taxonomy).
+        klass, _score = taxonomy.classify("git commit and push the change", cfg, None)
+        self.assertEqual(cfg["thresholds"]["mechanical_max_words"], 60)
+
+    def test_garbage_threshold_falls_back_to_default(self):
+        cfg = self._load({"version": 2, "thresholds": {"long_prompt_words": "banana"}})
+        self.assertEqual(
+            cfg["thresholds"]["long_prompt_words"],
+            DEFAULTS["thresholds"]["long_prompt_words"],
+        )
+
+    def test_cli_timeout_garbage_falls_back(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_timeout_seconds": "banana"}})
+        self.assertEqual(cfg["classifier"]["cli_timeout_seconds"], 8)
+
+    def test_cache_max_entries_string_coerced(self):
+        cfg = self._load({"version": 2, "classifier": {"cache_max_entries": "500"}})
+        self.assertEqual(cfg["classifier"]["cache_max_entries"], 500)
+
+    def test_cli_fallback_non_bool_falls_back_true(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_fallback": "nope"}})
+        self.assertIs(cfg["classifier"]["cli_fallback"], True)
+
+    def test_cli_fallback_bool_preserved(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_fallback": False}})
+        self.assertIs(cfg["classifier"]["cli_fallback"], False)
+
+    def test_apply_mode_invalid_falls_back_to_warn(self):
+        cfg = self._load({"version": 2, "apply_mode": "yolo"})
+        self.assertEqual(cfg["apply_mode"], "warn")
+
+    def test_subagent_enforcement_invalid_falls_back_to_on(self):
+        cfg = self._load({"version": 2, "subagent_enforcement": "sometimes"})
+        self.assertEqual(cfg["subagent_enforcement"], "on")
+
+    def test_allow_fable_autoswitch_non_bool_falls_back_false(self):
+        cfg = self._load({"version": 2, "allow_fable_autoswitch": "yes"})
+        self.assertIs(cfg["allow_fable_autoswitch"], False)
 
 
 if __name__ == "__main__":

@@ -376,6 +376,15 @@ class TestClassTargetResolution(unittest.TestCase):
         result = main_prompt_decision("debugging", "sonnet", "high", cfg, _score(5))
         self.assertIsNone(result)
 
+    def test_invalid_effort_falls_back_to_default(self):
+        """F3: an invalid effort string ("ultra") must not raise inside Decision;
+        it falls back to the shipped default effort for the class."""
+        cfg = self._cfg_with_target("debugging", {"effort": "ultra"})
+        decision = target_for_class("debugging", cfg)  # must not raise
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.model, "sonnet")
+        self.assertEqual(decision.effort, "high")  # debugging default
+
 
 # ── Tests: resolve_list extend/replace/remove (FR-33) ──────────────────────
 

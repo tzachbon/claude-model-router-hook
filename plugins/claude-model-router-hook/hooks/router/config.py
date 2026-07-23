@@ -193,6 +193,50 @@ def merge(base, overlay):
     return result
 
 
+def _as_int(value, fallback):
+    """int() coercion that never raises: bad values (e.g. "banana") -> fallback."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _normalize_config(cfg):
+    """Coerce merged config values to expected types, else fall back to DEFAULTS.
+
+    User config files are free-form JSON, so a string threshold ("60"), a typo'd
+    enum ("yolo"), or a non-bool flag must never crash the router or silently
+    disable it. Every value is repaired in place to a safe shipped default.
+    """
+    thresholds = cfg.get("thresholds")
+    if not isinstance(thresholds, dict):
+        thresholds = {}
+        cfg["thresholds"] = thresholds
+    for key, default in DEFAULTS["thresholds"].items():
+        thresholds[key] = _as_int(thresholds.get(key, default), default)
+
+    classifier = cfg.get("classifier")
+    if not isinstance(classifier, dict):
+        classifier = {}
+        cfg["classifier"] = classifier
+    defc = DEFAULTS["classifier"]
+    for key in ("cli_timeout_seconds", "cache_max_entries"):
+        classifier[key] = _as_int(classifier.get(key, defc[key]), defc[key])
+    cli_fallback = classifier.get("cli_fallback", defc["cli_fallback"])
+    classifier["cli_fallback"] = (
+        cli_fallback if isinstance(cli_fallback, bool) else defc["cli_fallback"]
+    )
+
+    if cfg.get("apply_mode") not in ("warn", "autoswitch"):
+        cfg["apply_mode"] = "warn"
+    if cfg.get("subagent_enforcement") not in ("on", "advisory", "off"):
+        cfg["subagent_enforcement"] = "on"
+    allow = cfg.get("allow_fable_autoswitch")
+    cfg["allow_fable_autoswitch"] = allow if isinstance(allow, bool) else False
+
+    return cfg
+
+
 def _load_file_as_v2(path):
     """Read one config file, detect its version, and migrate v1 to v2 shape."""
     raw = _read_json(path)
@@ -231,7 +275,7 @@ def load_config(global_path=None, cwd=None):
             config = merge(config, _load_file_as_v2(project_path))
             break
 
-    return config
+    return _normalize_config(config)
 
 
 def resolve_list(class_cfg, field, defaults):

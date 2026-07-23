@@ -560,6 +560,32 @@ assert_settings_unchanged "corrupt settings.json left byte-identical" "$HOME_CO"
 
 rm -rf "$HOME_CO" "$PROJ_MODEL"
 
+# ── Suite 15: Capability gate on main-prompt path (F1) ───────────────────────
+echo ""
+echo "--- Suite 15: Capability gate blocks haiku downroute on main path ---"
+
+# A mechanical-looking prompt ("rename the file") that also asks to coordinate
+# agents / hand off / spawn subagents must NOT downroute a sonnet session to
+# haiku: the capability gate floors it at sonnet. Before F1 the gate only ran on
+# the subagent path, so the main path could still suggest haiku here.
+assert_no_haiku() {
+    local test_name="$1"
+    # Pass unless the hook warned (exit 2) suggesting haiku.
+    if [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "haiku"; then
+        echo "  FAIL: $test_name - suggested haiku despite capability gate | stderr: $HOOK_STDERR"
+        FAIL=$((FAIL + 1))
+        ERRORS+=("$test_name")
+    else
+        echo "  PASS: $test_name"
+        PASS=$((PASS + 1))
+    fi
+}
+
+HOME_GATE=$(make_home "sonnet")
+run_hook "rename the file then coordinate agents via SendMessage handoff and spawn subagents" "$HOME_GATE"
+assert_no_haiku "handoff/multi-agent prompt does not downroute sonnet to haiku"
+rm -rf "$HOME_GATE"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
