@@ -10,8 +10,8 @@
   "plugins": [
     {
       "name": "claude-model-router-hook",
-      "description": "Automatic model switching for Claude Code based on prompt complexity. No API calls.",
-      "version": "1.4.0",
+      "description": "Automatic model switching for Claude Code based on prompt complexity. No API key required.",
+      "version": "2.0.0",
       "author": {
         "name": "tzachbon"
       },

@@ -14,12 +14,12 @@ info: |
 
 <div class="flex flex-col items-center justify-center h-full">
 <h1 class="text-6xl font-bold !leading-tight">Claude Model Router</h1>
-<p class="text-xl opacity-60 mt-6">Automatic model switching for Claude Code — zero API calls</p>
+<p class="text-xl opacity-60 mt-6">Model routing for Claude Code, heuristics-first, no API key required</p>
 <p class="text-sm opacity-30 mt-12">github.com/tzachbon/claude-model-router-hook</p>
 </div>
 
 <!--
-Welcome! I'm going to walk you through a hook I built for Claude Code that automatically switches between Opus, Sonnet, and Haiku based on what you're asking it to do. No API calls, no config — just pattern matching.
+Welcome! I'm going to walk you through a hook I built for Claude Code that routes across Haiku, Sonnet, Opus, and Fable based on what you're asking it to do. Classification is heuristics-first with an optional headless Claude CLI fallback, so no API key is needed. By default it warns; autoswitch is opt-in.
 -->
 
 ---
@@ -48,19 +48,23 @@ layout: center
 
 <h2 class="text-3xl font-bold text-amber-400 mb-8 text-center">How It Works</h2>
 
-<div class="grid grid-cols-2 gap-10 max-w-4xl">
+<div class="grid grid-cols-3 gap-8 max-w-5xl">
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-6">
 <h3 class="text-cyan-400 text-lg font-semibold mb-3">SessionStart</h3>
 <p class="opacity-70 text-sm leading-relaxed">Injects tier rules as a system message into every session — sub-agents learn which model to use for each task type.</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-6">
 <h3 class="text-cyan-400 text-lg font-semibold mb-3">UserPromptSubmit</h3>
-<p class="opacity-70 text-sm leading-relaxed">Classifies each prompt with keyword + regex matching, compares against current model, and suggests a switch if mismatched.</p>
+<p class="opacity-70 text-sm leading-relaxed">Classifies each prompt heuristics-first (keyword + regex), compares against current model, and warns on a mismatch. Autoswitch is opt-in and writes settings for new sessions only.</p>
+</div>
+<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-6">
+<h3 class="text-cyan-400 text-lg font-semibold mb-3">PreToolUse</h3>
+<p class="opacity-70 text-sm leading-relaxed">Fires on sub-agent spawns (Agent/Task) and deterministically rewrites the sub-agent's model/effort to the routed tier. Enforcement, not just advice.</p>
 </div>
 </div>
 
 <!--
-Two hooks, that's it. The first one fires at session start and injects tier rules so sub-agents know which model to pick. The second fires on every prompt — it classifies what you're asking, checks the current model, and suggests a switch if there's a mismatch. No API calls, no external services.
+Three hooks. SessionStart fires once and injects tier rules so sub-agents know which model to pick. UserPromptSubmit fires on every prompt: it classifies what you're asking, checks the current model, and warns if there's a mismatch. PreToolUse fires when a sub-agent is spawned and enforces the tier on it. Warn is the default; autoswitch is opt-in and only affects new sessions. Classification is heuristics-first with an optional headless Claude CLI fallback that you can disable; no API key is used.
 -->
 
 ---
@@ -69,11 +73,11 @@ layout: center
 
 <h2 class="text-3xl font-bold text-amber-400 mb-6 text-center">Classification Tiers</h2>
 
-<div class="grid grid-cols-3 gap-4 max-w-5xl">
+<div class="grid grid-cols-4 gap-4 max-w-6xl">
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
-<h3 class="text-purple-400 text-base font-semibold mb-2">Opus</h3>
-<p class="opacity-60 text-xs leading-relaxed"><code>architect</code> · <code>deep dive</code> · <code>multi-system</code> · <code>complex refactor</code> · <code>plan mode</code> · <code>analyze</code> · <code>strategy</code></p>
-<p class="opacity-40 text-xs mt-2">or prompt &gt; 200 words</p>
+<h3 class="text-cyan-400 text-base font-semibold mb-2">Haiku</h3>
+<p class="opacity-60 text-xs leading-relaxed"><code>git commit</code> · <code>rename</code> · <code>lint</code> · <code>format</code> · <code>delete file</code> · <code>add import</code> · <code>update version</code></p>
+<p class="opacity-40 text-xs mt-2">short mechanical prompts</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
 <h3 class="text-amber-400 text-base font-semibold mb-2">Sonnet</h3>
@@ -81,14 +85,19 @@ layout: center
 <p class="opacity-40 text-xs mt-2">default for feature work</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
-<h3 class="text-cyan-400 text-base font-semibold mb-2">Haiku</h3>
-<p class="opacity-60 text-xs leading-relaxed"><code>git commit</code> · <code>rename</code> · <code>lint</code> · <code>format</code> · <code>delete file</code> · <code>add import</code> · <code>update version</code></p>
-<p class="opacity-40 text-xs mt-2">short prompts &lt; 60 words</p>
+<h3 class="text-purple-400 text-base font-semibold mb-2">Opus</h3>
+<p class="opacity-60 text-xs leading-relaxed"><code>architect</code> · <code>deep dive</code> · <code>multi-system</code> · <code>complex refactor</code> · <code>plan mode</code> · <code>analyze</code> · <code>strategy</code></p>
+<p class="opacity-40 text-xs mt-2">longer, higher-stakes prompts</p>
+</div>
+<div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
+<h3 class="text-rose-400 text-base font-semibold mb-2">Fable</h3>
+<p class="opacity-60 text-xs leading-relaxed">top of the ladder for the most demanding work; autoswitch is gated behind <code>allow_fable_autoswitch</code></p>
+<p class="opacity-40 text-xs mt-2">opt-in top tier</p>
 </div>
 </div>
 
 <p v-click class="text-center mt-6 opacity-70 text-sm">
-<span class="text-cyan-400 font-semibold">Zero latency</span> — ~5ms pattern matching, not seconds
+<span class="text-cyan-400 font-semibold">Four-tier ladder with effort levels</span>: Haiku → Sonnet → Opus → Fable, each with an effort floor
 </p>
 
 <p v-click class="text-center mt-3 opacity-60 text-sm">
@@ -96,7 +105,7 @@ layout: center
 </p>
 
 <!--
-Pure regex and keyword matching, no LLM involved. That's the key insight — you don't need AI to classify "git commit all changes" as a simple task. Opus triggers on architecture keywords or very long prompts. Haiku triggers on short, mechanical prompts matching git/rename/format patterns. Sonnet is the middle ground for feature work.
+A four-tier ladder: Haiku, Sonnet, Opus, Fable, each with an effort floor. Classification is heuristics-first with keyword and regex matching, plus an optional headless Claude CLI fallback you can disable. Haiku triggers on short, mechanical prompts matching git/rename/format patterns. Sonnet is the middle ground for feature work. Opus handles architecture and higher-stakes work. Fable sits at the top for the most demanding work, and autoswitching to it is gated behind allow_fable_autoswitch.
 -->
 
 ---
@@ -111,7 +120,7 @@ layout: center
 </div>
 
 <!--
-On the left: sub-agents spawned with the correct model tier, injected by the SessionStart hook. On the right: the prompt router switching models in real time. No API calls, no config — just pattern matching.
+On the left: sub-agents spawned with the correct model tier, injected by the SessionStart hook and enforced by the PreToolUse hook. On the right: the prompt router warning on a mismatch, or switching when autoswitch is opted in. Heuristics-first classification, no API key required.
 -->
 
 ---

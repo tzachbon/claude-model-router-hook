@@ -1,57 +1,64 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Model Router Configuration",
-  "description": "Configuration for the Claude model router hook. Controls keyword/pattern matching and thresholds for routing prompts to opus, sonnet, or haiku.",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "$schema": {
-      "type": "string",
-      "description": "Path to the JSON schema file for IDE validation and autocomplete."
-    },
-    "opus": {
-      "$ref": "#/definitions/tierConfig",
-      "description": "Configuration for opus-tier routing. Uses keyword matching and regex patterns."
-    },
-    "sonnet": {
-      "$ref": "#/definitions/tierConfig",
-      "description": "Configuration for sonnet-tier routing. Uses regex patterns."
-    },
-    "haiku": {
-      "$ref": "#/definitions/tierConfig",
-      "description": "Configuration for haiku-tier routing. Uses regex patterns. Only matches when prompt word count is below haiku_max_word_count threshold."
-    },
-    "action": {
-      "type": "string",
-      "enum": ["warn", "autoswitch"],
-      "default": "warn",
-      "description": "\"warn\" (default) shows a system message recommending a model switch without changing settings.json; \"autoswitch\" changes settings.json automatically."
-    },
-    "thresholds": {
+  "description": "Configuration for the Claude model router hook. Accepts either the legacy v1 tier shape or the v2 class-based shape (discriminated by \"version\": 2).",
+  "oneOf": [
+    { "$ref": "#/definitions/v1Config" },
+    { "$ref": "#/definitions/v2Config" }
+  ],
+  "definitions": {
+    "v1Config": {
       "type": "object",
-      "description": "Word-count thresholds that influence tier selection.",
       "additionalProperties": false,
+      "description": "Legacy v1 shape: keyword/pattern tiers plus word-count thresholds. Has no \"version\" key.",
       "properties": {
-        "opus_word_count": {
-          "type": "integer",
-          "description": "Prompts longer than this word count are routed to opus.",
-          "default": 200
+        "$schema": {
+          "type": "string",
+          "description": "Path to the JSON schema file for IDE validation and autocomplete."
         },
-        "opus_question_word_count": {
-          "type": "integer",
-          "description": "Prompts containing '?' and longer than this word count are routed to opus.",
-          "default": 100
+        "opus": {
+          "$ref": "#/definitions/v1TierConfig",
+          "description": "Configuration for opus-tier routing. Uses keyword matching and regex patterns."
         },
-        "haiku_max_word_count": {
-          "type": "integer",
-          "description": "Haiku patterns only match if the prompt is shorter than this word count.",
-          "default": 60
+        "sonnet": {
+          "$ref": "#/definitions/v1TierConfig",
+          "description": "Configuration for sonnet-tier routing. Uses regex patterns."
+        },
+        "haiku": {
+          "$ref": "#/definitions/v1TierConfig",
+          "description": "Configuration for haiku-tier routing. Uses regex patterns. Only matches when prompt word count is below haiku_max_word_count threshold."
+        },
+        "thresholds": {
+          "type": "object",
+          "description": "Word-count thresholds that influence tier selection.",
+          "additionalProperties": false,
+          "properties": {
+            "opus_word_count": {
+              "type": "integer",
+              "description": "Prompts longer than this word count are routed to opus.",
+              "default": 200
+            },
+            "opus_question_word_count": {
+              "type": "integer",
+              "description": "Prompts containing '?' and longer than this word count are routed to opus.",
+              "default": 100
+            },
+            "haiku_max_word_count": {
+              "type": "integer",
+              "description": "Haiku patterns only match if the prompt is shorter than this word count.",
+              "default": 60
+            }
+          }
+        },
+        "action": {
+          "type": "string",
+          "enum": ["warn", "autoswitch"],
+          "default": "warn",
+          "description": "\"warn\" (default) recommends a model switch; \"autoswitch\" writes settings.json. Migrated to apply_mode in v2."
         }
       }
-    }
-  },
-  "definitions": {
-    "tierConfig": {
+    },
+    "v1TierConfig": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -80,6 +87,200 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "description": "Patterns to remove from the defaults (only used in \"extend\" mode)."
+        }
+      }
+    },
+    "v2Config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "v2 shape: class-based routing with model+effort targets. Requires \"version\": 2.",
+      "required": ["version"],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "Path to the JSON schema file for IDE validation and autocomplete."
+        },
+        "version": {
+          "const": 2,
+          "description": "Schema version discriminator. Must be 2 for the v2 shape."
+        },
+        "apply_mode": {
+          "type": "string",
+          "enum": ["warn", "autoswitch"],
+          "default": "warn",
+          "description": "\"warn\" suggests a model change; \"autoswitch\" writes the default model for new sessions."
+        },
+        "allow_fable_autoswitch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the router to autoswitch/inject the fable model. When false, fable decisions behave like warn."
+        },
+        "subagent_enforcement": {
+          "type": "string",
+          "enum": ["on", "advisory", "off"],
+          "default": "on",
+          "description": "\"on\" rewrites/injects subagent models; \"advisory\" emits a systemMessage only; \"off\" disables."
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "CLI-fallback classifier settings.",
+          "properties": {
+            "cli_fallback": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable the CLI classifier fallback. When false, routing is heuristics-only and fully offline."
+            },
+            "cli_timeout_seconds": {
+              "type": "integer",
+              "default": 8,
+              "maximum": 8,
+              "description": "Timeout in seconds for the CLI classifier subprocess. Clamped to at most 8s to stay under the hook budget."
+            },
+            "cache_max_entries": {
+              "type": "integer",
+              "default": 1000,
+              "description": "Maximum number of cached classifier decisions before oldest entries are evicted."
+            }
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Scoring margins and word-count thresholds that influence class/tier selection.",
+          "properties": {
+            "confident_margin": {
+              "type": "integer",
+              "default": 3,
+              "description": "Score margin above which a class decision is treated as confident."
+            },
+            "downroute_margin": {
+              "type": "integer",
+              "default": 4,
+              "description": "Score margin required to downroute below the caller's model."
+            },
+            "effort_warn_distance": {
+              "type": "integer",
+              "default": 2,
+              "description": "Effort-level distance at which an effort warning is emitted."
+            },
+            "mechanical_max_words": {
+              "type": "integer",
+              "default": 60,
+              "description": "Mechanical-class patterns only match if the prompt is shorter than this word count (from v1 haiku_max_word_count)."
+            },
+            "long_prompt_words": {
+              "type": "integer",
+              "default": 200,
+              "description": "Prompts longer than this word count are escalated (from v1 opus_word_count)."
+            },
+            "question_words": {
+              "type": "integer",
+              "default": 100,
+              "description": "Prompts containing '?' and longer than this word count are escalated (from v1 opus_question_word_count)."
+            }
+          }
+        },
+        "classes": {
+          "type": "object",
+          "description": "Per-class routing configuration keyed by class name (mechanical, implementation, debugging, architecture, extreme, or custom).",
+          "additionalProperties": { "$ref": "#/definitions/v2ClassConfig" }
+        },
+        "capability_gates": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Patterns that gate up to a minimum tier (sonnet).",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["extend", "replace"],
+              "default": "extend"
+            },
+            "patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "remove_patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "effort_floors": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Patterns that raise the effort floor (implies a minimum tier of sonnet).",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["extend", "replace"],
+              "default": "extend"
+            },
+            "patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "remove_patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "floor": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "xhigh"],
+              "default": "high",
+              "description": "Effort level enforced as the floor for matching prompts."
+            }
+          }
+        }
+      }
+    },
+    "v2ClassConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["extend", "replace"],
+          "default": "extend",
+          "description": "\"extend\" merges with built-in defaults; \"replace\" discards defaults entirely."
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Plain-text keywords to match against the prompt (case-insensitive)."
+        },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Regex patterns to match against the prompt."
+        },
+        "remove_keywords": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Keywords to remove from the defaults (only used in \"extend\" mode)."
+        },
+        "remove_patterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Patterns to remove from the defaults (only used in \"extend\" mode)."
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Routing target for this class.",
+          "required": ["model"],
+          "properties": {
+            "model": {
+              "type": "string",
+              "enum": ["haiku", "sonnet", "opus", "fable"],
+              "description": "Model alias to route this class to."
+            },
+            "effort": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "xhigh"],
+              "description": "Effort level for this class. Omitted for the mechanical/haiku target."
+            }
+          }
         }
       }
     }

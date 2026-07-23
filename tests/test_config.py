@@ -1,19 +1,19 @@
 """
-Unit tests for model_router config loading, resolution, and classification logic.
+Unit tests for router.config loading, resolution, and regex safety.
 
-Imports directly from hooks/model_router.py — the single source of truth.
+Imports directly from the v2 router.config module, the single source of truth.
 """
 
 import json
 import os
-import pathlib
 import sys
 import tempfile
 import unittest
 
-# Add hooks/ to import path so we can import model_router directly
+# Add hooks/ to import path so we can import the router package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "plugins", "claude-model-router-hook", "hooks"))
-from model_router import load_config, resolve_list, safe_regex_match
+from router.config import DEFAULTS, load_config, migrate_v1, resolve_list, safe_regex_match
+from router import taxonomy
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -33,62 +33,62 @@ def write_json(path, data):
 class TestResolveList(unittest.TestCase):
 
     def test_no_config_returns_defaults(self):
-        result = resolve_list({}, "opus", "keywords", DEFAULTS_KW)
+        result = resolve_list({}, "keywords", DEFAULTS_KW)
         self.assertEqual(result, DEFAULTS_KW)
 
     def test_extend_mode_adds_keywords(self):
-        config = {"opus": {"mode": "extend", "keywords": ["custom-kw"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "extend", "keywords": ["custom-kw"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, DEFAULTS_KW + ["custom-kw"])
 
     def test_extend_is_default_mode(self):
-        config = {"opus": {"keywords": ["extra"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"keywords": ["extra"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertIn("extra", result)
         for kw in DEFAULTS_KW:
             self.assertIn(kw, result)
 
     def test_replace_mode_discards_defaults(self):
-        config = {"opus": {"mode": "replace", "keywords": ["only-this"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "replace", "keywords": ["only-this"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, ["only-this"])
 
     def test_replace_mode_empty_list_returns_empty(self):
-        config = {"opus": {"mode": "replace", "keywords": []}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "replace", "keywords": []}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, [])
 
     def test_replace_mode_missing_field_returns_empty(self):
         """Replace mode with no field specified should return empty, not defaults."""
-        config = {"opus": {"mode": "replace"}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "replace"}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, [])
 
     def test_remove_keywords_in_extend_mode(self):
-        config = {"opus": {"mode": "extend", "remove_keywords": ["analyze"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "extend", "remove_keywords": ["analyze"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertNotIn("analyze", result)
         self.assertIn("architecture", result)
         self.assertIn("deep dive", result)
 
     def test_remove_patterns_in_extend_mode(self):
-        config = {"haiku": {"mode": "extend", "remove_patterns": [r"\blint\b"]}}
-        result = resolve_list(config, "haiku", "patterns", DEFAULTS_PAT)
+        class_cfg = {"mode": "extend", "remove_patterns": [r"\blint\b"]}
+        result = resolve_list(class_cfg, "patterns", DEFAULTS_PAT)
         self.assertNotIn(r"\blint\b", result)
         self.assertIn(r"\bformat\b", result)
 
     def test_remove_nonexistent_entry_is_noop(self):
-        config = {"opus": {"remove_keywords": ["not-in-defaults"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"remove_keywords": ["not-in-defaults"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, DEFAULTS_KW)
 
     def test_remove_ignored_in_replace_mode(self):
-        config = {"opus": {"mode": "replace", "keywords": ["a"], "remove_keywords": ["analyze"]}}
-        result = resolve_list(config, "opus", "keywords", DEFAULTS_KW)
+        class_cfg = {"mode": "replace", "keywords": ["a"], "remove_keywords": ["analyze"]}
+        result = resolve_list(class_cfg, "keywords", DEFAULTS_KW)
         self.assertEqual(result, ["a"])
 
-    def test_missing_tier_returns_defaults(self):
-        result = resolve_list({}, "haiku", "patterns", DEFAULTS_PAT)
+    def test_missing_class_returns_defaults(self):
+        result = resolve_list({}, "patterns", DEFAULTS_PAT)
         self.assertEqual(result, DEFAULTS_PAT)
 
 
@@ -99,16 +99,16 @@ class TestLoadConfig(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
 
-    def test_no_config_returns_empty(self):
+    def test_no_config_returns_defaults(self):
         nonexistent = os.path.join(self.tmpdir, "missing.json")
         config = load_config(global_path=nonexistent, cwd=self.tmpdir)
-        self.assertEqual(config, {})
+        self.assertEqual(config, DEFAULTS)
 
     def test_global_config_loaded(self):
         global_f = os.path.join(self.tmpdir, "global.json")
         write_json(global_f, {"opus": {"keywords": ["global-kw"]}})
         config = load_config(global_path=global_f, cwd=self.tmpdir)
-        self.assertEqual(config["opus"]["keywords"], ["global-kw"])
+        self.assertEqual(config["classes"]["architecture"]["keywords"], ["global-kw"])
 
     def test_project_config_overrides_global(self):
         global_f = os.path.join(self.tmpdir, "global.json")
@@ -119,10 +119,10 @@ class TestLoadConfig(unittest.TestCase):
         write_json(project_f, {"opus": {"keywords": ["project-kw"]}})
 
         config = load_config(global_path=global_f, cwd=project_dir)
-        self.assertEqual(config["opus"]["keywords"], ["project-kw"])
+        self.assertEqual(config["classes"]["architecture"]["keywords"], ["project-kw"])
 
     def test_tier_dict_deep_merged(self):
-        """Project tier config should deep-merge with global, not replace it."""
+        """Project class config should deep-merge with global, not replace it."""
         global_f = os.path.join(self.tmpdir, "global.json")
         write_json(global_f, {"opus": {"keywords": ["gk"], "patterns": ["gp"]}})
 
@@ -132,9 +132,9 @@ class TestLoadConfig(unittest.TestCase):
 
         config = load_config(global_path=global_f, cwd=project_dir)
         # keywords overridden by project
-        self.assertEqual(config["opus"]["keywords"], ["pk"])
+        self.assertEqual(config["classes"]["architecture"]["keywords"], ["pk"])
         # patterns preserved from global
-        self.assertEqual(config["opus"]["patterns"], ["gp"])
+        self.assertEqual(config["classes"]["architecture"]["patterns"], ["gp"])
 
     def test_thresholds_deep_merged(self):
         global_f = os.path.join(self.tmpdir, "global.json")
@@ -145,8 +145,8 @@ class TestLoadConfig(unittest.TestCase):
         write_json(project_f, {"thresholds": {"haiku_max_word_count": 20}})
 
         config = load_config(global_path=global_f, cwd=project_dir)
-        self.assertEqual(config["thresholds"]["opus_word_count"], 300)
-        self.assertEqual(config["thresholds"]["haiku_max_word_count"], 20)
+        self.assertEqual(config["thresholds"]["long_prompt_words"], 300)
+        self.assertEqual(config["thresholds"]["mechanical_max_words"], 20)
 
     def test_project_thresholds_override_global(self):
         global_f = os.path.join(self.tmpdir, "global.json")
@@ -157,14 +157,14 @@ class TestLoadConfig(unittest.TestCase):
         write_json(project_f, {"thresholds": {"opus_word_count": 150}})
 
         config = load_config(global_path=global_f, cwd=project_dir)
-        self.assertEqual(config["thresholds"]["opus_word_count"], 150)
+        self.assertEqual(config["thresholds"]["long_prompt_words"], 150)
 
     def test_invalid_json_falls_back_gracefully(self):
         bad_f = os.path.join(self.tmpdir, "bad.json")
         with open(bad_f, "w") as f:
             f.write("{invalid json!!")
         config = load_config(global_path=bad_f, cwd=self.tmpdir)
-        self.assertEqual(config, {})
+        self.assertEqual(config, DEFAULTS)
 
     def test_schema_key_skipped_during_merge(self):
         global_f = os.path.join(self.tmpdir, "global.json")
@@ -176,7 +176,7 @@ class TestLoadConfig(unittest.TestCase):
 
         config = load_config(global_path=global_f, cwd=project_dir)
         self.assertNotIn("$schema", config)
-        self.assertEqual(config["opus"]["keywords"], ["pkw"])
+        self.assertEqual(config["classes"]["architecture"]["keywords"], ["pkw"])
 
     def test_project_discovered_from_parent_directory(self):
         """Config in a parent .claude/ directory should be found when CWD is deeper."""
@@ -189,7 +189,28 @@ class TestLoadConfig(unittest.TestCase):
 
         nonexistent_global = os.path.join(self.tmpdir, "nope.json")
         config = load_config(global_path=nonexistent_global, cwd=deep_dir)
-        self.assertEqual(config["opus"]["keywords"], ["from-parent"])
+        self.assertEqual(config["classes"]["architecture"]["keywords"], ["from-parent"])
+
+
+# ── Tests: migrate_v1 (v1-semantics coverage) ─────────────────────────────
+
+class TestMigrateV1(unittest.TestCase):
+    """v1-shaped config migrates to v2 shape (tier->class, threshold renames)."""
+
+    def test_tiers_map_to_classes(self):
+        migrated = migrate_v1({"opus": {"keywords": ["a"]}, "haiku": {"patterns": ["p"]}})
+        self.assertEqual(migrated["classes"]["architecture"]["keywords"], ["a"])
+        self.assertEqual(migrated["classes"]["mechanical"]["patterns"], ["p"])
+
+    def test_threshold_keys_renamed(self):
+        migrated = migrate_v1({"thresholds": {"opus_word_count": 300, "haiku_max_word_count": 20}})
+        self.assertEqual(migrated["thresholds"]["long_prompt_words"], 300)
+        self.assertEqual(migrated["thresholds"]["mechanical_max_words"], 20)
+
+    def test_sets_v2_version_and_warn_mode(self):
+        migrated = migrate_v1({"opus": {"keywords": ["a"]}})
+        self.assertEqual(migrated["version"], 2)
+        self.assertEqual(migrated["apply_mode"], "warn")
 
 
 # ── Tests: safe_regex_match ───────────────────────────────────────────────
@@ -213,134 +234,91 @@ class TestSafeRegexMatch(unittest.TestCase):
     def test_empty_list(self):
         self.assertFalse(safe_regex_match([], "anything"))
 
+    def test_non_string_pattern_skipped(self):
+        """Non-string pattern entries (e.g. 123, null) are skipped, not raised (F3)."""
+        self.assertFalse(safe_regex_match([123, None], "test"))
+
+    def test_non_string_mixed_with_valid_still_matches(self):
+        """A valid pattern still matches even when non-string entries are present (F3)."""
+        self.assertTrue(safe_regex_match([123, r"\blint\b", None], "please lint the code"))
+
 
 # ── Tests: opus patterns ──────────────────────────────────────────────────
 
 class TestOpusPatterns(unittest.TestCase):
-    """Verify opus supports both keywords and regex patterns."""
+    """Verify the architecture class supports both keywords and regex patterns."""
 
-    def test_opus_patterns_resolved(self):
-        config = {"opus": {"patterns": [r"\bmy-opus-trigger\b"]}}
-        result = resolve_list(config, "opus", "patterns", [])
+    def test_patterns_resolved(self):
+        class_cfg = {"patterns": [r"\bmy-opus-trigger\b"]}
+        result = resolve_list(class_cfg, "patterns", [])
         self.assertEqual(result, [r"\bmy-opus-trigger\b"])
 
-    def test_opus_patterns_default_empty(self):
-        result = resolve_list({}, "opus", "patterns", [])
+    def test_patterns_default_empty(self):
+        result = resolve_list({}, "patterns", [])
         self.assertEqual(result, [])
 
 
-# ── Tests: thresholds + classification ────────────────────────────────────
+# ── Tests: config normalization (F2) ──────────────────────────────────────
 
-class TestThresholds(unittest.TestCase):
-    """Verify threshold values and boundary semantics (>, <) in routing logic."""
+class TestNormalizeConfig(unittest.TestCase):
+    """Merged config values are coerced to expected types, else fall back to
+    DEFAULTS, so free-form user JSON can never crash or silently disable the
+    router."""
 
-    def _classify(self, prompt, config):
-        prompt_lower = prompt.lower()
-        word_count = len(prompt.split())
-        thresholds = config.get("thresholds", {})
-        opus_wc = thresholds.get("opus_word_count", 200)
-        opus_q_wc = thresholds.get("opus_question_word_count", 100)
-        haiku_max = thresholds.get("haiku_max_word_count", 60)
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
 
-        default_opus_kw = ["analyze", "architecture"]
-        default_haiku_pat = [r"\blint\b", r"\bformat\b"]
-        default_sonnet_pat = [r"\bfix\b", r"\bbuild\b"]
+    def _load(self, data):
+        global_f = os.path.join(self.tmpdir, "global.json")
+        write_json(global_f, data)
+        return load_config(global_path=global_f, cwd=self.tmpdir)
 
-        opus_keywords = resolve_list(config, "opus", "keywords", default_opus_kw)
-        opus_patterns = resolve_list(config, "opus", "patterns", [])
-        haiku_patterns = resolve_list(config, "haiku", "patterns", default_haiku_pat)
-        sonnet_patterns = resolve_list(config, "sonnet", "patterns", default_sonnet_pat)
+    def test_string_threshold_coerced_to_int(self):
+        cfg = self._load({"version": 2, "thresholds": {"mechanical_max_words": "60"}})
+        self.assertEqual(cfg["thresholds"]["mechanical_max_words"], 60)
+        self.assertIsInstance(cfg["thresholds"]["mechanical_max_words"], int)
 
-        has_opus_keyword = any(kw in prompt_lower for kw in opus_keywords)
-        has_opus_pattern = safe_regex_match(opus_patterns, prompt_lower)
-        has_opus_signal = has_opus_keyword or has_opus_pattern
+    def test_string_threshold_classifies_without_crashing(self):
+        cfg = self._load({"version": 2, "thresholds": {"mechanical_max_words": "60"}})
+        # A short mechanical prompt still classifies with the honored int bound
+        # (a string "60" would raise on the int comparison in taxonomy).
+        klass, _score = taxonomy.classify("git commit and push the change", cfg, None)
+        self.assertEqual(cfg["thresholds"]["mechanical_max_words"], 60)
 
-        if has_opus_signal or \
-           (word_count > opus_q_wc and "?" in prompt) or \
-           word_count > opus_wc:
-            return "opus"
-        if word_count < haiku_max and safe_regex_match(haiku_patterns, prompt_lower):
-            return "haiku"
-        if safe_regex_match(sonnet_patterns, prompt_lower):
-            return "sonnet"
-        return None
+    def test_garbage_threshold_falls_back_to_default(self):
+        cfg = self._load({"version": 2, "thresholds": {"long_prompt_words": "banana"}})
+        self.assertEqual(
+            cfg["thresholds"]["long_prompt_words"],
+            DEFAULTS["thresholds"]["long_prompt_words"],
+        )
 
-    # --- opus_word_count: uses > (strictly greater than) ---
+    def test_cli_timeout_garbage_falls_back(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_timeout_seconds": "banana"}})
+        self.assertEqual(cfg["classifier"]["cli_timeout_seconds"], 8)
 
-    def test_default_opus_word_count_above(self):
-        """201 words > 200 → opus"""
-        self.assertEqual(self._classify(" ".join(["word"] * 201), {}), "opus")
+    def test_cache_max_entries_string_coerced(self):
+        cfg = self._load({"version": 2, "classifier": {"cache_max_entries": "500"}})
+        self.assertEqual(cfg["classifier"]["cache_max_entries"], 500)
 
-    def test_default_opus_word_count_at_boundary(self):
-        """200 words == 200, not > 200 → NOT opus"""
-        self.assertNotEqual(self._classify(" ".join(["word"] * 200), {}), "opus")
+    def test_cli_fallback_non_bool_falls_back_true(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_fallback": "nope"}})
+        self.assertIs(cfg["classifier"]["cli_fallback"], True)
 
-    def test_custom_opus_word_count_above(self):
-        config = {"thresholds": {"opus_word_count": 50}}
-        self.assertEqual(self._classify(" ".join(["word"] * 51), config), "opus")
+    def test_cli_fallback_bool_preserved(self):
+        cfg = self._load({"version": 2, "classifier": {"cli_fallback": False}})
+        self.assertIs(cfg["classifier"]["cli_fallback"], False)
 
-    def test_custom_opus_word_count_at_boundary(self):
-        config = {"thresholds": {"opus_word_count": 50}}
-        self.assertNotEqual(self._classify(" ".join(["word"] * 50), config), "opus")
+    def test_apply_mode_invalid_falls_back_to_warn(self):
+        cfg = self._load({"version": 2, "apply_mode": "yolo"})
+        self.assertEqual(cfg["apply_mode"], "warn")
 
-    # --- opus_question_word_count: uses > (strictly greater than) ---
+    def test_subagent_enforcement_invalid_falls_back_to_on(self):
+        cfg = self._load({"version": 2, "subagent_enforcement": "sometimes"})
+        self.assertEqual(cfg["subagent_enforcement"], "on")
 
-    def test_default_question_word_count_above(self):
-        """101 words with ? > 100 → opus"""
-        self.assertEqual(self._classify(" ".join(["word"] * 101) + "?", {}), "opus")
-
-    def test_default_question_word_count_at_boundary(self):
-        """100 words with ? == 100, not > 100 → NOT opus"""
-        self.assertNotEqual(self._classify(" ".join(["word"] * 100) + "?", {}), "opus")
-
-    def test_custom_question_word_count_above(self):
-        config = {"thresholds": {"opus_question_word_count": 50}}
-        self.assertEqual(self._classify(" ".join(["word"] * 51) + "?", config), "opus")
-
-    def test_custom_question_word_count_at_boundary(self):
-        config = {"thresholds": {"opus_question_word_count": 50}}
-        self.assertNotEqual(self._classify(" ".join(["word"] * 50) + "?", config), "opus")
-
-    # --- haiku_max_word_count: uses < (strictly less than) ---
-
-    def test_default_haiku_max_word_count_below(self):
-        """59 words < 60 with lint → haiku"""
-        prompt = " ".join(["word"] * 58) + " lint"
-        self.assertEqual(self._classify(prompt, {}), "haiku")
-
-    def test_default_haiku_max_word_count_at_boundary(self):
-        """60 words == 60, not < 60 → NOT haiku (lint still present)"""
-        prompt = " ".join(["word"] * 59) + " lint"
-        self.assertNotEqual(self._classify(prompt, {}), "haiku")
-
-    def test_custom_haiku_max_word_count_above(self):
-        """25 words >= 20 with lint → NOT haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 24) + " lint"
-        self.assertNotEqual(self._classify(prompt, config), "haiku")
-
-    def test_custom_haiku_max_word_count_at_boundary(self):
-        """20 words == 20, not < 20 → NOT haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 19) + " lint"
-        self.assertNotEqual(self._classify(prompt, config), "haiku")
-
-    def test_custom_haiku_max_word_count_below(self):
-        """19 words < 20 with lint → haiku"""
-        config = {"thresholds": {"haiku_max_word_count": 20}}
-        prompt = " ".join(["word"] * 18) + " lint"
-        self.assertEqual(self._classify(prompt, config), "haiku")
-
-    # --- Other classification tests ---
-
-    def test_opus_pattern_triggers_routing(self):
-        config = {"opus": {"patterns": [r"\bmy-opus-trigger\b"]}}
-        self.assertEqual(self._classify("run my-opus-trigger now", config), "opus")
-
-    def test_malformed_regex_does_not_crash(self):
-        config = {"haiku": {"mode": "replace", "patterns": [r"[bad-regex"]}}
-        result = self._classify("lint", config)
-        self.assertIsNone(result)
+    def test_allow_fable_autoswitch_non_bool_falls_back_false(self):
+        cfg = self._load({"version": 2, "allow_fable_autoswitch": "yes"})
+        self.assertIs(cfg["allow_fable_autoswitch"], False)
 
 
 if __name__ == "__main__":
