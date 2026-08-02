@@ -40,6 +40,7 @@ from router.ladder import EFFORTS, TIERS, Decision  # noqa: E402
 from router.policy import (  # noqa: E402
     apply_gates,
     gate_outcomes,
+    main_prompt_decision,
     min_gated_target,
     target_for_class,
 )
@@ -81,6 +82,22 @@ GATE_PROMPTS = list(TRIGGERS) + [
 
 MALFORMED_CFGS = (None, {}, {"classes": None}, {"classes": {}}, {"classes": "x"},
                   {"classes": {"implementation": 3}}, 7, "nope", [])
+
+# Nested containers holding a non-dict. Every one of these used to reach a
+# .get on a string, an int or None somewhere on the new code paths.
+NESTED_MALFORMED_CFGS = (
+    {"effort_floors": "broken"},
+    {"effort_floors": 7},
+    {"effort_floors": True},
+    {"effort_floors": []},
+    {"effort_floors": {"floor": {"nested": "dict"}}},
+    {"capability_gates": "broken"},
+    {"capability_gates": 0},
+    {"thresholds": "broken"},
+    {"classes": {"implementation": {"target": "broken"}}},
+    {"classes": {"implementation": {"target": {"model": []}}}},
+    {"classes": {"implementation": "broken"}, "effort_floors": "broken"},
+)
 
 
 def _cfg(**class_targets):
@@ -831,21 +848,33 @@ class TestMinGatedTarget(unittest.TestCase):
             implementation={"model": "haiku"}, debugging={"model": "haiku"},
             architecture={"model": "haiku"}, extreme={"model": "haiku"},
         )
-        self.assertEqual(min_gated_target(cfg), ("haiku", None))
+        self.assertIsNone(min_gated_target(cfg))
 
-    def test_invalid_values_fall_back_to_defaults(self):
+    def test_unusable_implementation_walks_within_the_config(self):
+        """It must not reach for the shipped default, which targets sonnet."""
         self.assertEqual(
             min_gated_target(_cfg(implementation={"model": "gpt-9"})),
-            ("sonnet", "medium"),
+            ("sonnet", "high"),  # debugging, the cheapest non-haiku DEFAULTS target
         )
+
+    def test_unusable_implementation_in_a_sonnet_free_config_stays_sonnet_free(self):
+        cfg = _cfg(
+            implementation={"model": "gpt-9"},
+            debugging={"model": "opus", "effort": "high"},
+            architecture={"model": "opus", "effort": "high"},
+            extreme={"model": "fable", "effort": "high"},
+        )
+        self.assertEqual(min_gated_target(cfg), ("opus", "high"))
+
+    def test_invalid_effort_falls_back_within_the_class(self):
         self.assertEqual(
             min_gated_target(_cfg(implementation={"model": "opus", "effort": "ultra"})),
             ("opus", "medium"),
         )
 
-    def test_malformed_config_never_raises(self):
-        for cfg in MALFORMED_CFGS:
-            self.assertEqual(min_gated_target(cfg), ("sonnet", "medium"))
+    def test_malformed_config_declares_no_escalation_target(self):
+        for cfg in MALFORMED_CFGS + NESTED_MALFORMED_CFGS:
+            self.assertIsNone(min_gated_target(cfg), repr(cfg))
 
 
 class TestGatedBumpFollowsConfig(unittest.TestCase):
@@ -928,10 +957,351 @@ class TestGatedBumpFollowsConfig(unittest.TestCase):
                             self.assertNotEqual(gated.model, "sonnet", where)
 
     def test_malformed_configs_never_raise_in_the_gate_path(self):
-        for cfg in MALFORMED_CFGS:
+        for cfg in MALFORMED_CFGS + NESTED_MALFORMED_CFGS:
             for klass in ("mechanical", "debugging"):
                 for prompt in ("plain prompt", "coordinate agents", "delete data"):
                     apply_gates(prompt, Decision("haiku", None, klass, "heuristic"), cfg)
+
+
+class TestGateNeverReachesOutsideTheConfig(unittest.TestCase):
+    """The floor may only name a model some class actually declares."""
+
+    UNUSABLE_IMPL = {
+        "version": 2,
+        "classifier": {"cli_fallback": False},
+        "classes": {
+            "mechanical": {"target": {"model": "haiku"}},
+            "implementation": {"target": {"model": "gpt-9"}},
+            "debugging": {"target": {"model": "opus", "effort": "high"}},
+            "architecture": {"target": {"model": "opus", "effort": "high"}},
+            "extreme": {"target": {"model": "fable", "effort": "high"}},
+        },
+    }
+
+    def _resolved(self):
+        cfg = copy.deepcopy(DEFAULTS)
+        for klass, entry in self.UNUSABLE_IMPL["classes"].items():
+            cfg["classes"][klass]["target"] = dict(entry["target"])
+        return cfg
+
+    def test_unusable_class_never_resurrects_a_model_the_config_rejects(self):
+        cfg = self._resolved()
+        self.assertNotIn("sonnet", json.dumps(self.UNUSABLE_IMPL))
+        for name in variants.variant_map(cfg).values():
+            self.assertNotIn("sonnet", name)
+        for klass in ("mechanical", "implementation", "debugging",
+                      "architecture", "extreme"):
+            for pair in gate_outcomes(klass, cfg):
+                self.assertNotEqual(pair[0], "sonnet", "%s -> %s" % (klass, pair))
+
+    def test_gated_spawn_stays_sonnet_free(self):
+        cfg = self._resolved()
+        gated = apply_gates(
+            "rename the file and coordinate agents on the handoff",
+            Decision("haiku", None, "mechanical", "heuristic"), cfg,
+        )
+        self.assertEqual((gated.model, gated.effort), ("opus", "high"))
+
+    def test_no_legal_target_leaves_the_decision_alone(self):
+        cfg = _cfg(
+            implementation={"model": "haiku"}, debugging={"model": "haiku"},
+            architecture={"model": "haiku"}, extreme={"model": "haiku"},
+        )
+        decision = Decision("haiku", None, "mechanical", "heuristic")
+        self.assertIs(apply_gates("coordinate agents", decision, cfg), decision)
+
+    def test_end_to_end_spawn_never_names_an_undeclared_model(self):
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(home, self.UNUSABLE_IMPL)
+            payload = json.dumps({
+                "tool_name": "Agent",
+                "tool_input": {
+                    "subagent_type": "general-purpose",
+                    "prompt": "rename the file and coordinate agents on the handoff",
+                },
+            })
+            code, stdout = _run_hook("pre_tool_use.py", payload, home)
+            self.assertEqual(code, 0)
+            self.assertNotIn("sonnet", stdout)
+            updated = json.loads(stdout)["hookSpecificOutput"]["updatedInput"]
+            self.assertEqual(updated["model"], "opus")
+
+    def test_generator_never_writes_an_undeclared_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = _write_home(os.path.join(tmp, "home"), self.UNUSABLE_IMPL)
+            agents = os.path.join(tmp, "agents")
+            env = dict(os.environ)
+            env["HOME"] = home
+            proc = subprocess.run(
+                [sys.executable, GENERATOR, "--agents-dir", agents,
+                 "--use-user-config"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            for name in os.listdir(agents):
+                self.assertNotIn("sonnet", name)
+
+
+class TestNestedMalformedConfigNeverShutsRoutingDown(unittest.TestCase):
+    """A silent exit 0 is the worst failure here: nothing surfaces it."""
+
+    def test_no_nested_shape_raises_in_the_variant_path(self):
+        for cfg in NESTED_MALFORMED_CFGS:
+            variants.variant_map(cfg)
+            variants.target_variants(cfg)
+            for klass in ("mechanical", "implementation", "debugging",
+                          "architecture", "extreme"):
+                gate_outcomes(klass, cfg)
+
+    def test_no_nested_shape_raises_in_the_advisory_path(self):
+        for cfg in NESTED_MALFORMED_CFGS:
+            self.assertIn("## Model Tier Rules", render_advisory(cfg))
+            self.assertIn("## Model Tier Rules", render_session_context("opus", cfg))
+
+    def test_no_nested_shape_raises_in_the_main_prompt_path(self):
+        for cfg in NESTED_MALFORMED_CFGS:
+            main_prompt_decision("implementation", "opus", "high", cfg, None, "hi")
+
+    def test_broken_thresholds_beside_valid_classes_does_not_raise(self):
+        """Needs valid classes: an unroutable one returns before reading them.
+
+        load_config repairs thresholds, so this is defence in depth rather than
+        a reachable production shape, but it is the one nested container the
+        main-prompt path reads and it must not be the exception.
+        """
+        for broken in ("broken", 7, [], True):
+            cfg = copy.deepcopy(DEFAULTS)
+            cfg["thresholds"] = broken
+            main_prompt_decision("implementation", "haiku", "high", cfg, None, "hi")
+            main_prompt_decision("mechanical", "opus", "high", cfg, None, "hi")
+
+    def test_broken_effort_floors_still_routes_a_spawn(self):
+        """The reported repro: PreToolUse produced no output at all."""
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(home, {
+                "version": 2,
+                "classifier": {"cli_fallback": False},
+                "effort_floors": "broken",
+            }, agents=list(variants.target_variants(copy.deepcopy(DEFAULTS))))
+            payload = json.dumps({
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "general-purpose",
+                               "prompt": "rename the file src/a.py to src/b.py"},
+            })
+            code, stdout = _run_hook("pre_tool_use.py", payload, home)
+            self.assertEqual(code, 0)
+            self.assertTrue(stdout.strip(), "hook produced no output: routing died")
+            updated = json.loads(stdout)["hookSpecificOutput"]["updatedInput"]
+            self.assertEqual(updated["model"], "haiku")
+
+    def test_broken_nested_value_does_not_abort_the_generator(self):
+        for broken in ("broken", 7, []):
+            with tempfile.TemporaryDirectory() as tmp:
+                home = _write_home(os.path.join(tmp, "home"), {
+                    "version": 2, "effort_floors": broken, "capability_gates": broken,
+                })
+                agents = os.path.join(tmp, "agents")
+                env = dict(os.environ)
+                env["HOME"] = home
+                proc = subprocess.run(
+                    [sys.executable, GENERATOR, "--agents-dir", agents,
+                     "--use-user-config"],
+                    capture_output=True, text=True, env=env,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertIn("routed-haiku.md", os.listdir(agents))
+
+
+class TestLegacyMatchIsByteEquality(unittest.TestCase):
+    """The pre-key proof must be what it claims: an exact rendering match."""
+
+    LEGACY = (
+        "---\n"
+        "name: routed-opus-high\n"
+        "description: Router-managed variant for architecture tasks. "
+        "Spawned by the model router hook; do not invoke directly.\n"
+        "model: opus\n"
+        "effort: high\n"
+        "---\n\n"
+        "Complete the delegated task exactly as prompted; return a concise report.\n"
+    )
+
+    def test_genuine_pre_key_rendering_is_owned(self):
+        self.assertTrue(variants.is_generated(self.LEGACY, "routed-opus-high.md"))
+
+    def test_foreign_model_is_not_owned(self):
+        """The reported repro: boilerplate body, someone else's model."""
+        text = self.LEGACY.replace("model: opus", "model: local-custom-model")
+        text = text.replace("name: routed-opus-high", "name: routed-my-notes")
+        self.assertFalse(variants.is_generated(text, "routed-my-notes.md"))
+
+    def test_foreign_effort_is_not_owned(self):
+        text = self.LEGACY.replace("effort: high", "effort: enormous")
+        self.assertFalse(variants.is_generated(text, "routed-opus-high.md"))
+
+    def test_name_not_matching_the_pair_is_not_owned(self):
+        text = self.LEGACY.replace("name: routed-opus-high", "name: routed-opus-low")
+        self.assertFalse(variants.is_generated(text, "routed-opus-low.md"))
+
+    def test_effort_on_haiku_is_not_owned(self):
+        text = (
+            "---\nname: routed-haiku\n"
+            "description: Router-managed variant for mechanical tasks. "
+            "Spawned by the model router hook; do not invoke directly.\n"
+            "model: haiku\neffort: high\n---\n\n"
+            "Complete the delegated task exactly as prompted; return a concise report.\n"
+        )
+        self.assertFalse(variants.is_generated(text, "routed-haiku.md"))
+
+    def test_missing_effort_on_a_non_haiku_model_is_not_owned(self):
+        text = self.LEGACY.replace("effort: high\n", "")
+        self.assertFalse(variants.is_generated(text, "routed-opus-high.md"))
+
+    def test_class_list_that_is_not_routable_classes_is_not_owned(self):
+        text = self.LEGACY.replace(
+            "for architecture tasks", "for whatever-i-like tasks")
+        self.assertFalse(variants.is_generated(text, "routed-opus-high.md"))
+
+    def test_multi_class_pre_key_rendering_is_owned(self):
+        text = self.LEGACY.replace(
+            "for architecture tasks", "for debugging and architecture tasks")
+        self.assertTrue(variants.is_generated(text, "routed-opus-high.md"))
+
+    def test_generator_does_not_prune_a_foreign_lookalike(self):
+        with tempfile.TemporaryDirectory() as agents:
+            path = os.path.join(agents, "routed-my-notes.md")
+            text = self.LEGACY.replace("model: opus", "model: local-custom-model")
+            text = text.replace("name: routed-opus-high", "name: routed-my-notes")
+            with open(path, "w") as fh:
+                fh.write(text)
+            proc = subprocess.run(
+                [sys.executable, GENERATOR, "--agents-dir", agents],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout)
+            self.assertIn("SKIP (not router-generated)", proc.stdout)
+            with open(path) as fh:
+                self.assertEqual(fh.read(), text)
+
+
+class TestInstalledMeansUsable(unittest.TestCase):
+    """Resolution requires a readable regular file this generator wrote."""
+
+    def _agents(self, tmp):
+        agents = os.path.join(tmp, "agents")
+        os.makedirs(agents, exist_ok=True)
+        return agents
+
+    def test_directory_at_the_name_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            os.makedirs(os.path.join(agents, "routed-haiku.md"))
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_symlink_to_a_directory_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            target = os.path.join(tmp, "somedir")
+            os.makedirs(target)
+            os.symlink(target, os.path.join(agents, "routed-haiku.md"))
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_dangling_symlink_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            os.symlink(os.path.join(tmp, "nope"),
+                       os.path.join(agents, "routed-haiku.md"))
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_foreign_file_is_not_installed(self):
+        """The file the generator refuses to overwrite must not be selected."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            with open(os.path.join(agents, "routed-haiku.md"), "w") as fh:
+                fh.write("---\nname: routed-haiku\n---\n\nhand written\n")
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_undecodable_bytes_are_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            with open(os.path.join(agents, "routed-haiku.md"), "wb") as fh:
+                fh.write(b"\xff\xfe\x00binary")
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_unreadable_file_is_not_installed(self):
+        if os.geteuid() == 0:
+            self.skipTest("root ignores file permissions")
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            path = os.path.join(agents, "routed-haiku.md")
+            with open(path, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)))
+            os.chmod(path, 0o000)
+            try:
+                self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+            finally:
+                os.chmod(path, 0o600)
+
+    def test_generated_file_is_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            with open(os.path.join(agents, "routed-haiku.md"), "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)))
+            self.assertTrue(variants.is_installed(agents, "routed-haiku"))
+
+    def test_missing_directory_is_not_installed(self):
+        self.assertFalse(variants.is_installed("/nonexistent/nowhere", "routed-haiku"))
+        self.assertFalse(variants.is_installed("", "routed-haiku"))
+
+    def test_spawn_does_not_select_a_directory(self):
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(home, {"version": 2, "classifier": {"cli_fallback": False}})
+            os.makedirs(os.path.join(home, ".claude", "agents", "routed-haiku.md"))
+            payload = json.dumps({
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "general-purpose",
+                               "prompt": "rename the file src/a.py to src/b.py"},
+            })
+            code, stdout = _run_hook("pre_tool_use.py", payload, home)
+            self.assertEqual(code, 0)
+            emitted = json.loads(stdout)
+            self.assertEqual(
+                emitted["hookSpecificOutput"]["updatedInput"]["subagent_type"],
+                "general-purpose",
+            )
+            self.assertIn("not installed", emitted.get("systemMessage", ""))
+
+    def test_spawn_does_not_select_a_foreign_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(home, {"version": 2, "classifier": {"cli_fallback": False}})
+            agent_dir = os.path.join(home, ".claude", "agents")
+            os.makedirs(agent_dir)
+            with open(os.path.join(agent_dir, "routed-haiku.md"), "w") as fh:
+                fh.write("---\nname: routed-haiku\n---\n\nhand written\n")
+            payload = json.dumps({
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "general-purpose",
+                               "prompt": "rename the file src/a.py to src/b.py"},
+            })
+            code, stdout = _run_hook("pre_tool_use.py", payload, home)
+            self.assertEqual(code, 0)
+            updated = json.loads(stdout)["hookSpecificOutput"]["updatedInput"]
+            self.assertEqual(updated["subagent_type"], "general-purpose")
+
+    def test_divergence_warning_fires_for_an_occupied_name(self):
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(home, {"version": 2})
+            agent_dir = os.path.join(home, ".claude", "agents")
+            os.makedirs(agent_dir)
+            with open(os.path.join(agent_dir, "routed-haiku.md"), "w") as fh:
+                fh.write("---\nname: routed-haiku\n---\n\nhand written\n")
+            code, stdout = _run_hook("session_init.py", "{}", home)
+            self.assertEqual(code, 0)
+            context = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Routed variants out of date", context)
+            self.assertIn("routed-haiku", context)
 
 
 if __name__ == "__main__":
