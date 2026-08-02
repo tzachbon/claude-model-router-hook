@@ -8,9 +8,15 @@ rewritten onto a model the config does not declare.
 
 Modes:
   (default)          write the declared set into --agents-dir, prune stale
-                     router-owned files, and report what changed
+                     generated files, and report what changed
   --check            report drift and exit non-zero, writing nothing
   --use-user-config  resolve the user's ~/.claude config instead of DEFAULTS
+  --force            overwrite and prune files this generator did not write
+
+Only files this generator wrote are ever overwritten or removed; ownership is
+a `router-generated: true` frontmatter key, not a guess at the body text. A
+routed-*.md the user wrote themselves is reported as a conflict and the run
+exits non-zero rather than replacing it.
 
 The committed set under plugins/claude-model-router-hook/agents is generated
 from DEFAULTS so a plain clone works with no install step. install.sh
@@ -23,8 +29,6 @@ import argparse
 import copy
 import os
 import sys
-
-START_MARKER = "Spawned by the model router hook"
 
 
 def _repo_root():
@@ -61,17 +65,13 @@ def _resolve_config(config, use_user_config):
         return copy.deepcopy(config.DEFAULTS)
 
 
-def _router_owned(path):
-    """True when a routed-*.md file was written by this generator.
-
-    Guards the prune step so a hand-written agent that happens to be named
-    routed-something is never deleted.
-    """
+def _read(path):
+    """File contents, or None when unreadable."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            return START_MARKER in fh.read()
+            return fh.read()
     except OSError:
-        return False
+        return None
 
 
 def _existing_router_files(agents_dir):
@@ -104,6 +104,11 @@ def main(argv):
         action="store_true",
         help="report drift and exit non-zero; write nothing",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite and prune agent files this generator did not write",
+    )
     args = parser.parse_args(argv[1:])
 
     config, variants = _bootstrap()
@@ -120,18 +125,25 @@ def main(argv):
 
     existing = _existing_router_files(agents_dir)
     drift = False
+    conflicts = []
+    failures = []
 
     for filename in sorted(wanted):
         path = os.path.join(agents_dir, filename)
-        current = None
-        if filename in existing:
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    current = fh.read()
-            except OSError:
-                current = None
+        current = _read(path) if filename in existing else None
         if current == wanted[filename]:
             print("OK: " + filename)
+            continue
+        # Ownership is checked before writing, not only before deleting: a
+        # wanted name can collide with a file a human wrote, and clobbering it
+        # would be silent data loss.
+        if (
+            current is not None
+            and not args.force
+            and not variants.is_generated(current, filename)
+        ):
+            print("CONFLICT (not router-generated, refusing to overwrite): " + filename)
+            conflicts.append(filename)
             continue
         drift = True
         if args.check:
@@ -144,8 +156,8 @@ def main(argv):
     for filename, path in existing.items():
         if filename in wanted:
             continue
-        if not _router_owned(path):
-            print("SKIP (not router-owned): " + filename)
+        if not args.force and not variants.is_generated(_read(path), filename):
+            print("SKIP (not router-generated): " + filename)
             continue
         drift = True
         if args.check:
@@ -155,8 +167,20 @@ def main(argv):
             os.remove(path)
             print("REMOVED: " + filename)
         except OSError as exc:
+            # A stale variant that survives is a routing hazard, not a cosmetic
+            # one: it stays selectable by name. Never report success.
             print("REMOVE FAILED: " + filename + " (" + str(exc) + ")")
+            failures.append(filename)
 
+    if conflicts:
+        print(
+            "Refused to overwrite "
+            + str(len(conflicts))
+            + " file(s) not written by this generator. Move them aside, or pass "
+            "--force to replace them."
+        )
+    if conflicts or failures:
+        return 1
     if args.check and drift:
         return 1
     return 0
