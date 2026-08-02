@@ -21,18 +21,6 @@ V1_HINT = (
 )
 
 
-def _global_config_path():
-    """Global config path: canonical ~/.claude/model-router.json, with a
-    fallback to ~/.claude/hooks/model-router.json (legacy hook-dir layout)."""
-    canonical = Path.home() / ".claude" / "model-router.json"
-    if canonical.exists():
-        return canonical
-    legacy = Path.home() / ".claude" / "hooks" / "model-router.json"
-    if legacy.exists():
-        return legacy
-    return None
-
-
 def _v1_config_detected(global_path):
     """True when the global or nearest project config file is v1-shaped (FR-31)."""
     paths = []
@@ -67,7 +55,7 @@ def main():
     if ladder.detect_tier(current_model) is None:
         sys.exit(0)  # unknown/unset session model: fail-open (v1 parity)
 
-    global_path = _global_config_path()
+    global_path = config.global_config_path()
     cfg = config.load_config(global_path=global_path)
 
     # One-time v1 upgrade hint (FR-32, AC-8.3): marker in CLAUDE_PLUGIN_DATA;

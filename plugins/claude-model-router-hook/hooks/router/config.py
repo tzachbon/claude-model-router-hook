@@ -247,6 +247,23 @@ def _load_file_as_v2(path):
     return raw
 
 
+def global_config_path():
+    """Global config path: canonical ~/.claude/model-router.json, with a
+    fallback to ~/.claude/hooks/model-router.json (legacy hook-dir layout).
+
+    Returns None when neither exists, which load_config reads as "defaults
+    only". Shared by all three hook entrypoints so they cannot disagree about
+    which file a session is routed by.
+    """
+    canonical = pathlib.Path.home() / ".claude" / "model-router.json"
+    if canonical.exists():
+        return canonical
+    legacy = pathlib.Path.home() / ".claude" / "hooks" / "model-router.json"
+    if legacy.exists():
+        return legacy
+    return None
+
+
 def load_config(global_path=None, cwd=None):
     """Load global + project configs, merged onto DEFAULTS (project wins, AC-8.4).
 
