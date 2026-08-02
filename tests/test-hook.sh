@@ -15,6 +15,18 @@ ERRORS=()
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Populate a temp HOME's agents dir the way a manual install does. The hook
+# resolves a routed variant against the agent files that actually exist, so a
+# HOME without them is not a manual install, it is a broken one.
+install_agents() {
+    local home_dir="$1"
+    mkdir -p "$home_dir/.claude/agents"
+    cp "$REPO_DIR"/plugins/claude-model-router-hook/agents/routed-*.md \
+        "$home_dir/.claude/agents/"
+}
+
 # Create a temporary HOME dir with a fake settings.json for the given model and a
 # global v2 model-router.json with classifier.cli_fallback disabled (no subprocess).
 make_home() {
@@ -24,6 +36,7 @@ make_home() {
     mkdir -p "$tmpdir/.claude/hooks"
     printf '{"model":"%s"}' "$model" > "$tmpdir/.claude/settings.json"
     printf '{"version":2,"classifier":{"cli_fallback":false}}' > "$tmpdir/.claude/model-router.json"
+    install_agents "$tmpdir"
     echo "$tmpdir"
 }
 
@@ -426,12 +439,24 @@ assert_pre_json "plugin-context generic spawn rewrites to scoped routed-haiku + 
 
 # F6: CLAUDE_PLUGIN_ROOT is set but the shipped agent file is absent (host
 # substituted the var textually or it points elsewhere): fall back to the bare
-# name so the rewrite still resolves against ~/.claude/agents.
+# name, which resolves against the agent files installed in ~/.claude/agents.
 MISSING_ROOT=$(mktemp -d)
 run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$HOME_DIR" "CLAUDE_PLUGIN_ROOT=$MISSING_ROOT"
 assert_pre_json "plugin root without agents file falls back to bare routed-haiku" \
     'import json,sys; u=json.load(sys.stdin)["hookSpecificOutput"]["updatedInput"]; assert u["subagent_type"]=="routed-haiku"; assert u["model"]=="haiku"'
 rm -rf "$MISSING_ROOT"
+
+# F7: the variant is declared by config but installed nowhere (config edited
+# after install). Naming it would hand the host a subagent_type that does not
+# exist, so inject the model alone and say so.
+BARE_HOME=$(mktemp -d)
+mkdir -p "$BARE_HOME/.claude/hooks"
+printf '{"model":"sonnet"}' > "$BARE_HOME/.claude/settings.json"
+printf '{"version":2,"classifier":{"cli_fallback":false}}' > "$BARE_HOME/.claude/model-router.json"
+run_pre_hook "{\"tool_name\":\"Agent\",\"tool_input\":{\"subagent_type\":\"general-purpose\",\"prompt\":\"$MECH_PROMPT\"}}" "$BARE_HOME"
+assert_pre_json "uninstalled variant degrades to model-only injection" \
+    'import json,sys; d=json.load(sys.stdin)["hookSpecificOutput"]; u=d["updatedInput"]; assert u["model"]=="haiku"; assert u["subagent_type"]=="general-purpose", u'
+rm -rf "$BARE_HOME"
 
 # Same spawn without CLAUDE_PLUGIN_ROOT (manual/unscoped install): emit the
 # bare routed-haiku name that resolves against ~/.claude/agents.

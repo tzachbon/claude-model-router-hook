@@ -11,20 +11,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from router import config, hookio, policy, taxonomy  # noqa: E402
+from router import config, hookio, policy, taxonomy, variants  # noqa: E402
 from router.ladder import detect_tier  # noqa: E402
 
 PLUGIN_PREFIX = "claude-model-router-hook:"
 GENERIC_TYPES = ("general-purpose", "default", "claude")
-
-# (model, effort) -> shipped routed-* variant (design class-target table).
-VARIANTS = {
-    ("haiku", None): "routed-haiku",
-    ("sonnet", "medium"): "routed-sonnet-medium",
-    ("sonnet", "high"): "routed-sonnet-high",
-    ("opus", "high"): "routed-opus-high",
-    ("fable", "high"): "routed-fable-high",
-}
 
 
 def _env_model_warning(decision_model):
@@ -40,15 +31,33 @@ def _env_model_warning(decision_model):
     )
 
 
-def _global_config_path():
-    """Global config path: canonical ~/.claude/model-router.json, with a
-    fallback to ~/.claude/hooks/model-router.json (legacy hook-dir layout)."""
-    canonical = Path.home() / ".claude" / "model-router.json"
-    if canonical.exists():
-        return canonical
-    legacy = Path.home() / ".claude" / "hooks" / "model-router.json"
-    if legacy.exists():
-        return legacy
+def _resolve_variant(variant):
+    """Subagent_type for a variant, or None when no usable agent file backs it.
+
+    A plugin-scoped name resolves only under a plugin install, so it is used
+    only when the file is actually present under CLAUDE_PLUGIN_ROOT: some hosts
+    substitute ${CLAUDE_PLUGIN_ROOT} textually in hooks.json without exporting
+    it, and the bare name still resolves against ~/.claude/agents (F6).
+
+    "Present" means variants.is_installed, not path existence. A directory, an
+    unreadable file, a symlink to a directory, or a hand-written file occupying
+    the name are all things the host cannot spawn, and the last of those is
+    precisely the file the generator refuses to overwrite: auto-selecting it
+    here would undo that protection at runtime.
+
+    Returning None is deliberate. The variant set is config-derived, so an
+    edited config can declare a variant the last install never generated;
+    naming it would hand the host a subagent_type that does not resolve.
+    Model-only injection is the honest degradation, and the caller says so in a
+    systemMessage.
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root and variants.is_installed(
+        os.path.join(plugin_root, "agents"), variant
+    ):
+        return PLUGIN_PREFIX + variant
+    if variants.is_installed(str(Path.home() / ".claude" / "agents"), variant):
+        return variant
     return None
 
 
@@ -72,7 +81,7 @@ def main():
     ):
         sys.exit(0)  # idempotency guard: already rewritten (scoped or unscoped)
 
-    cfg = config.load_config(global_path=_global_config_path())
+    cfg = config.load_config(global_path=config.global_config_path())
     enforcement = cfg.get("subagent_enforcement", "on")
     if enforcement == "off":
         sys.exit(0)
@@ -127,22 +136,13 @@ def main():
 
     updated = dict(tool_input)
     updated["model"] = decision.model  # bare alias only (A-1)
-    variant = VARIANTS.get((decision.model, decision.effort))
-    if generic and variant:
-        # Plugin-scoped name resolves only under a plugin install; manual
-        # installs copy the agents in unscoped, so emit the bare name there.
-        # Use the scoped prefix only when the shipped agent file actually exists
-        # under CLAUDE_PLUGIN_ROOT: some hosts substitute ${CLAUDE_PLUGIN_ROOT}
-        # textually in hooks.json without exporting it, and the bare name still
-        # resolves against ~/.claude/agents (F6). Residual assumption: a plugin
-        # install exports CLAUDE_PLUGIN_ROOT into the hook process env.
-        prefix = ""
-        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        if plugin_root and os.path.exists(
-            os.path.join(plugin_root, "agents", variant + ".md")
-        ):
-            prefix = PLUGIN_PREFIX
-        updated["subagent_type"] = prefix + variant
+    # Variant set comes from the configured class targets, so the hook can only
+    # ever select a variant this config declares (and install.sh generated).
+    declared = variants.variant_map(cfg).get((decision.model, decision.effort))
+    variant = _resolve_variant(declared) if (generic and declared) else None
+    uninstalled = declared if (generic and declared and not variant) else None
+    if variant:
+        updated["subagent_type"] = variant
 
     if enforcement == "advisory":
         # Advisory mode: systemMessage only, never updatedInput (AC-3.3 shape).
@@ -157,9 +157,27 @@ def main():
         sys.exit(0)
 
     messages = []
-    if not (generic and variant) and decision.effort:
-        # No matching shipped variant (custom type or overridden target):
-        # model-only injection, effort stays advisory (AC-4.2, AC-5.2).
+    if uninstalled:
+        # Declared by the config but not installed as a usable agent file: the
+        # config changed after install, a project config declares a target the
+        # global install did not see, or something else occupies the name.
+        # Naming it would hand the host a subagent_type that does not resolve,
+        # so inject the model alone and say why (F7). Warned even for a haiku
+        # decision that carries no effort: the missing variant is the point.
+        effort_note = (
+            f", so effort {decision.effort} is advisory only"
+            if decision.effort
+            else ""
+        )
+        messages.append(
+            f"Model router: injected model {decision.model}; routed variant "
+            f"{uninstalled} is declared by the config but not installed"
+            f"{effort_note}. Re-run install.sh."
+        )
+    elif not variant and decision.effort:
+        # No matching variant at all (custom subagent_type, or a target the
+        # config does not declare): model-only injection, effort stays
+        # advisory (AC-4.2, AC-5.2).
         messages.append(
             f"Model router: injected model {decision.model}; no matching "
             f"routed variant, so effort {decision.effort} is advisory only."
@@ -169,7 +187,7 @@ def main():
         messages.append(warning)
 
     hookio.log(
-        "SUBAGENT-REWRITE" if generic and variant else "SUBAGENT-MODEL",
+        "SUBAGENT-REWRITE" if variant else "SUBAGENT-MODEL",
         prompt,
         klass=decision.klass,
         model=decision.model,
