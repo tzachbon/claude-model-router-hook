@@ -110,14 +110,44 @@ def _max_effort(a, b):
     return a if EFFORTS.index(a) >= EFFORTS.index(b) else b
 
 
+def min_gated_target(cfg):
+    """(model, effort) tier floor for gated work: the configured implementation target.
+
+    Gated work (handoff/multi-agent, or anything carrying an effort floor) must
+    not run on the bottom tier. The tier it escalates to is whatever the config
+    declares for the implementation class rather than a hard-coded model, so a
+    config that never targets a tier can never be routed onto it. Falls back to
+    the shipped implementation target when the configured value is absent or
+    unusable. Never raises.
+    """
+    default = DEFAULTS["classes"]["implementation"]["target"]
+    target = {}
+    if isinstance(cfg, dict):
+        classes = cfg.get("classes")
+        if isinstance(classes, dict):
+            entry = classes.get("implementation")
+            if isinstance(entry, dict) and isinstance(entry.get("target"), dict):
+                target = entry["target"]
+
+    model = target.get("model")
+    if model not in TIERS:
+        return default["model"], default.get("effort")
+    if model == "haiku":
+        return model, None  # haiku decisions carry no effort
+    effort = target.get("effort")
+    if effort is not None and effort not in EFFORTS:
+        effort = default.get("effort")
+    return model, effort
+
+
 def apply_gates(prompt, decision, cfg):
     """Capability gates and effort floors on a classified decision (FR-21, FR-22).
 
-    - capability_gates patterns (handoff/multi-agent work) -> min tier sonnet;
-      a haiku decision is bumped to (sonnet, medium) (AC-6.3).
+    - capability_gates patterns (handoff/multi-agent work) -> min tier is the
+      configured implementation target; a decision below it is bumped (AC-6.3).
     - debugging class -> effort >= high (AC-6.5).
     - effort_floors patterns (data-handling risk) -> effort >= effort_floors.floor;
-      any floor implies min tier sonnet (haiku carries no effort).
+      any floor also implies that min tier (haiku carries no effort).
     """
     prompt_lower = prompt.lower()
     floors_cfg = cfg.get("effort_floors") or {}
@@ -133,12 +163,19 @@ def apply_gates(prompt, decision, cfg):
         floor = _max_effort(floor, cfg_floor)
 
     gate_patterns = resolve_list(cfg.get("capability_gates"), "patterns", DEFAULT_GATE_PATTERNS)
-    min_sonnet = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
+    gated = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
+    min_model, min_effort = min_gated_target(cfg)
 
     model, effort = decision.model, decision.effort
-    if min_sonnet and TIERS.index(model) < TIERS.index("sonnet"):
-        model, effort = "sonnet", "medium"
-    if floor is not None and (effort is None or EFFORTS.index(effort) < EFFORTS.index(floor)):
+    if gated and TIERS.index(model) < TIERS.index(min_model):
+        model, effort = min_model, min_effort
+    # A haiku decision that stayed haiku (min tier is itself haiku) carries no
+    # effort; assigning the floor there would break the Decision invariant.
+    if (
+        model != "haiku"
+        and floor is not None
+        and (effort is None or EFFORTS.index(effort) < EFFORTS.index(floor))
+    ):
         effort = floor
     if model == decision.model and effort == decision.effort:
         return decision
