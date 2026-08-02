@@ -4,6 +4,7 @@ import dataclasses
 
 from .config import DEFAULTS, resolve_list, safe_regex_match
 from .ladder import EFFORTS, TIERS, Decision, detect_tier, effort_distance
+from .taxonomy import CLASSES
 
 # Same-tier cells where effort escalates past the class target (effort-first):
 # the session already sits on the target tier, so only effort can go higher.
@@ -34,8 +35,22 @@ def target_for_class(klass, cfg, source="heuristic"):
     and, via fail-open, disable all routing silently. Haiku targets always carry
     effort None, since a deep-merged partial override can leave an inherited
     effort on a model that was switched to haiku.
+
+    A malformed config shape (missing or non-dict "classes", class entry or
+    target) returns None for the same reason, rather than raising: exiting
+    through fail-open and exiting through the None check produce the same
+    pass-through, but only the None check is visible to callers that want to
+    report the class as unroutable.
     """
-    target = cfg["classes"][klass]["target"]
+    classes = cfg.get("classes") if isinstance(cfg, dict) else None
+    if not isinstance(classes, dict):
+        return None
+    entry = classes.get(klass)
+    if not isinstance(entry, dict):
+        return None
+    target = entry.get("target")
+    if not isinstance(target, dict):
+        return None
     model = target.get("model")
     if model not in TIERS:
         return None
@@ -110,46 +125,141 @@ def _max_effort(a, b):
     return a if EFFORTS.index(a) >= EFFORTS.index(b) else b
 
 
+def _class_target_pair(klass, cfg):
+    """(model, effort) for a class, or None when the target is unusable."""
+    decision = target_for_class(klass, cfg)
+    if decision is None:
+        return None
+    return decision.model, decision.effort
+
+
 def min_gated_target(cfg):
-    """(model, effort) tier floor for gated work: the configured implementation target.
+    """(model, effort) tier floor for gated work.
 
     Gated work (handoff/multi-agent, or anything carrying an effort floor) must
-    not run on the bottom tier. The tier it escalates to is whatever the config
-    declares for the implementation class rather than a hard-coded model, so a
-    config that never targets a tier can never be routed onto it. Falls back to
-    the shipped implementation target when the configured value is absent or
-    unusable. Never raises.
-    """
-    default = DEFAULTS["classes"]["implementation"]["target"]
-    target = {}
-    if isinstance(cfg, dict):
-        classes = cfg.get("classes")
-        if isinstance(classes, dict):
-            entry = classes.get("implementation")
-            if isinstance(entry, dict) and isinstance(entry.get("target"), dict):
-                target = entry["target"]
+    not run on the bottom tier; that guarantee is the point of AC-6.3. The tier
+    it escalates to is the configured implementation target rather than a
+    hard-coded model, so a config that targets a tier nowhere can never be
+    routed onto it.
 
-    model = target.get("model")
-    if model not in TIERS:
-        return default["model"], default.get("effort")
-    if model == "haiku":
-        return model, None  # haiku decisions carry no effort
-    effort = target.get("effort")
-    if effort is not None and effort not in EFFORTS:
-        effort = default.get("effort")
+    An implementation target of haiku is the awkward case. Taking it literally
+    would leave gated work on the bottom tier and, because haiku decisions
+    carry no effort, silently drop every effort floor with it: the escalation
+    guarantee would disappear exactly where it matters most. Such a config is
+    saying "implementation work is cheap", not "risky work should stay at the
+    bottom". So walk instead to the cheapest non-haiku target any other class
+    declares. Only a config with nothing above haiku anywhere yields a haiku
+    floor, and there no escalation exists to offer.
+
+    Falls back to the shipped implementation target when the configured value
+    is absent or unusable. Never raises.
+    """
+    pair = _class_target_pair("implementation", cfg)
+    if pair is None:
+        default = DEFAULTS["classes"]["implementation"]["target"]
+        pair = (default["model"], default.get("effort"))
+    if pair[0] != "haiku":
+        return pair
+
+    best = None
+    for klass in CLASSES:
+        if klass == "implementation":
+            continue
+        other = _class_target_pair(klass, cfg)
+        if other is None or other[0] == "haiku":
+            continue
+        if best is None or TIERS.index(other[0]) < TIERS.index(best[0]):
+            best = other
+    return best if best is not None else ("haiku", None)
+
+
+def configured_floor(cfg):
+    """The effort_floors.floor value a matching floor pattern applies."""
+    floors_cfg = (cfg.get("effort_floors") if isinstance(cfg, dict) else None) or {}
+    cfg_floor = floors_cfg.get("floor", "high")
+    return cfg_floor if cfg_floor in EFFORTS else "high"
+
+
+def _gated_pair(model, effort, floor, gated, cfg):
+    """(model, effort) after the tier bump and the effort floor.
+
+    The whole of the gate arithmetic, shared by apply_gates and gate_outcomes
+    so the variant set cannot describe an outcome the router does not produce.
+    """
+    if gated:
+        min_model, min_effort = min_gated_target(cfg)
+        if TIERS.index(model) < TIERS.index(min_model):
+            model, effort = min_model, min_effort
+    # A decision that stayed on haiku carries no effort; assigning the floor
+    # there would break the Decision invariant and, via fail-open, silently
+    # disable routing. min_gated_target only leaves haiku here when the config
+    # declares nothing above it, so there is no floor to honour anyway.
+    if (
+        model != "haiku"
+        and floor is not None
+        and (effort is None or EFFORTS.index(effort) < EFFORTS.index(floor))
+    ):
+        effort = floor
     return model, effort
+
+
+def _gate_states(klass, cfg):
+    """Every (floor, gated) state apply_gates can reach for a class.
+
+    Enumerates over prompts rather than sampling them: the floor is either the
+    pattern-independent debugging floor, the configured effort_floors.floor, or
+    absent, and "gated" is implied by any floor plus the capability patterns.
+    """
+    cfg_floor = configured_floor(cfg)
+    if klass == "debugging":
+        # The debugging floor is pattern-independent, so floor is never None.
+        states = [("high", True), (_max_effort("high", cfg_floor), True)]
+    else:
+        states = [(None, False), (None, True), (cfg_floor, True)]
+    unique = []
+    for state in states:
+        if state not in unique:
+            unique.append(state)
+    return unique
+
+
+def gate_outcomes(klass, cfg):
+    """Every (model, effort) apply_gates can produce for a class's target.
+
+    A class target alone is not the full set: a gate bump or an effort floor
+    synthesizes pairs no class declares, and those need routed variants too.
+    Returns [] for an unroutable class.
+    """
+    target = None
+    try:
+        target = target_for_class(klass, cfg)
+    except Exception:
+        target = None
+    if target is None:
+        return []
+    outcomes = []
+    for floor, gated in _gate_states(klass, cfg):
+        pair = _gated_pair(target.model, target.effort, floor, gated, cfg)
+        if pair not in outcomes:
+            outcomes.append(pair)
+    return outcomes
 
 
 def apply_gates(prompt, decision, cfg):
     """Capability gates and effort floors on a classified decision (FR-21, FR-22).
 
-    - capability_gates patterns (handoff/multi-agent work) -> min tier is the
-      configured implementation target; a decision below it is bumped (AC-6.3).
+    - capability_gates patterns (handoff/multi-agent work) -> min tier is
+      min_gated_target; a decision below it is bumped (AC-6.3).
     - debugging class -> effort >= high (AC-6.5).
     - effort_floors patterns (data-handling risk) -> effort >= effort_floors.floor;
       any floor also implies that min tier (haiku carries no effort).
     """
     prompt_lower = prompt.lower()
+    # cfg is normally the resolved dict from load_config, but every other entry
+    # point in this module tolerates a malformed one and this must too: raising
+    # here exits through fail-open and disables routing without a word.
+    if not isinstance(cfg, dict):
+        cfg = {}
     floors_cfg = cfg.get("effort_floors") or {}
 
     floor = "high" if decision.klass == "debugging" else None
@@ -157,26 +267,12 @@ def apply_gates(prompt, decision, cfg):
     # remove_patterns behave identically to per-class list resolution (F9).
     floor_patterns = resolve_list(floors_cfg, "patterns", DEFAULT_FLOOR_PATTERNS)
     if safe_regex_match(floor_patterns, prompt_lower):
-        cfg_floor = floors_cfg.get("floor", "high")
-        if cfg_floor not in EFFORTS:
-            cfg_floor = "high"
-        floor = _max_effort(floor, cfg_floor)
+        floor = _max_effort(floor, configured_floor(cfg))
 
     gate_patterns = resolve_list(cfg.get("capability_gates"), "patterns", DEFAULT_GATE_PATTERNS)
     gated = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
-    min_model, min_effort = min_gated_target(cfg)
 
-    model, effort = decision.model, decision.effort
-    if gated and TIERS.index(model) < TIERS.index(min_model):
-        model, effort = min_model, min_effort
-    # A haiku decision that stayed haiku (min tier is itself haiku) carries no
-    # effort; assigning the floor there would break the Decision invariant.
-    if (
-        model != "haiku"
-        and floor is not None
-        and (effort is None or EFFORTS.index(effort) < EFFORTS.index(floor))
-    ):
-        effort = floor
+    model, effort = _gated_pair(decision.model, decision.effort, floor, gated, cfg)
     if model == decision.model and effort == decision.effort:
         return decision
     return dataclasses.replace(decision, model=model, effort=effort)
