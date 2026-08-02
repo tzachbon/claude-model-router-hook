@@ -11,20 +11,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from router import config, hookio, policy, taxonomy  # noqa: E402
+from router import config, hookio, policy, taxonomy, variants  # noqa: E402
 from router.ladder import detect_tier  # noqa: E402
 
 PLUGIN_PREFIX = "claude-model-router-hook:"
 GENERIC_TYPES = ("general-purpose", "default", "claude")
-
-# (model, effort) -> shipped routed-* variant (design class-target table).
-VARIANTS = {
-    ("haiku", None): "routed-haiku",
-    ("sonnet", "medium"): "routed-sonnet-medium",
-    ("sonnet", "high"): "routed-sonnet-high",
-    ("opus", "high"): "routed-opus-high",
-    ("fable", "high"): "routed-fable-high",
-}
 
 
 def _env_model_warning(decision_model):
@@ -38,18 +29,6 @@ def _env_model_warning(decision_model):
         f"Warning: CLAUDE_CODE_SUBAGENT_MODEL={env_model} overrides the "
         f"router's model choice ({decision_model})."
     )
-
-
-def _global_config_path():
-    """Global config path: canonical ~/.claude/model-router.json, with a
-    fallback to ~/.claude/hooks/model-router.json (legacy hook-dir layout)."""
-    canonical = Path.home() / ".claude" / "model-router.json"
-    if canonical.exists():
-        return canonical
-    legacy = Path.home() / ".claude" / "hooks" / "model-router.json"
-    if legacy.exists():
-        return legacy
-    return None
 
 
 @hookio.fail_open
@@ -72,7 +51,7 @@ def main():
     ):
         sys.exit(0)  # idempotency guard: already rewritten (scoped or unscoped)
 
-    cfg = config.load_config(global_path=_global_config_path())
+    cfg = config.load_config(global_path=config.global_config_path())
     enforcement = cfg.get("subagent_enforcement", "on")
     if enforcement == "off":
         sys.exit(0)
@@ -127,7 +106,9 @@ def main():
 
     updated = dict(tool_input)
     updated["model"] = decision.model  # bare alias only (A-1)
-    variant = VARIANTS.get((decision.model, decision.effort))
+    # Variant set comes from the configured class targets, so the hook can only
+    # ever select a variant this config declares (and install.sh generated).
+    variant = variants.variant_map(cfg).get((decision.model, decision.effort))
     if generic and variant:
         # Plugin-scoped name resolves only under a plugin install; manual
         # installs copy the agents in unscoped, so emit the bare name there.

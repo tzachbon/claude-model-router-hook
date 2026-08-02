@@ -27,8 +27,16 @@ cp "$SCRIPT_DIR/hooks/session_init.py"       "$HOOKS_DIR/session_init.py"
 cp "$SCRIPT_DIR/hooks/user_prompt_submit.py" "$HOOKS_DIR/user_prompt_submit.py"
 cp "$SCRIPT_DIR/hooks/pre_tool_use.py"       "$HOOKS_DIR/pre_tool_use.py"
 
-# Routed agent variants
-cp "$SCRIPT_DIR"/agents/routed-*.md "$AGENTS_DIR/"
+# Routed agent variants, generated from the resolved config so only tiers the
+# config actually targets get an agent file. Falls back to copying the
+# committed (DEFAULTS) set if the generator cannot run.
+if python3 "$REPO_ROOT/scripts/generate_variants.py" \
+    --agents-dir "$AGENTS_DIR" --use-user-config; then
+    :
+else
+    echo "Variant generation failed; installing the shipped default set."
+    cp "$SCRIPT_DIR"/agents/routed-*.md "$AGENTS_DIR/"
+fi
 
 # Config schema (v1 + v2 shapes)
 cp "$REPO_ROOT/schema/model-router.schema.json" "$SCHEMA_DIR/model-router.schema.json"
@@ -53,6 +61,6 @@ echo ""
 echo "Under 'PreToolUse' (matcher \"Agent|Task\"):"
 echo "  { \"matcher\": \"Agent|Task\", \"hooks\": [ { \"type\": \"command\", \"command\": \"python3 \\\"$HOOKS_DIR/pre_tool_use.py\\\"\", \"timeout\": 10 } ] }"
 echo ""
-echo "Routed subagent variants installed to $AGENTS_DIR (routed-haiku, routed-sonnet-medium, routed-sonnet-high, routed-opus-high, routed-fable-high)."
+echo "Routed subagent variants installed to $AGENTS_DIR, one per configured class target (listed above)."
 echo ""
 echo "Then restart Claude Code."
