@@ -213,30 +213,49 @@ def _frontmatter_flag(text):
     return False
 
 
-def installed_names(agent_dirs):
-    """Variant names present as agent files across the given directories."""
-    found = set()
-    for directory in agent_dirs:
-        if not directory:
-            continue
-        try:
-            entries = os.listdir(directory)
-        except OSError:
-            continue
-        for entry in entries:
-            if entry.startswith(AGENT_PREFIX) and entry.endswith(".md"):
-                found.add(entry[:-3])
-    return found
+def is_installed(directory, name):
+    """True when `directory` holds a usable generated agent file for `name`.
+
+    Path existence is not the question. A directory, a dangling or looping
+    symlink, an unreadable file, undecodable bytes, or the hand-written file
+    the generator just refused to overwrite all "exist" and none of them is an
+    agent the host can spawn. Requiring the same ownership predicate the
+    generator writes by means installed-ness and generated-ness cannot drift
+    apart, and the file the generator protects on disk is never auto-selected
+    at runtime. Never raises.
+    """
+    if not directory:
+        return False
+    path = os.path.join(directory, name + ".md")
+    try:
+        if not os.path.isfile(path):  # follows symlinks; dirs and dangling links out
+            return False
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except (OSError, ValueError, UnicodeDecodeError):
+        return False
+    return is_generated(text, name + ".md")
+
+
+def installed_names(agent_dirs, names):
+    """The subset of `names` backed by a usable agent file in any directory."""
+    return {
+        name
+        for name in names
+        if any(is_installed(directory, name) for directory in agent_dirs)
+    }
 
 
 def missing_variants(cfg, agent_dirs):
     """Declared variant names with no agent file in any of agent_dirs.
 
     Non-empty means the installed set is behind the config: the config was
-    edited after install, or a project config declares a target the global
-    install never saw.
+    edited after install, a project config declares a target the global install
+    never saw, or a declared name is occupied by something that is not a usable
+    generated agent file.
     """
-    installed = installed_names(agent_dirs)
+    declared = [name for name, _m, _e, _c in target_variants(cfg)]
+    installed = installed_names(agent_dirs, declared)
     return [
-        name for name, _m, _e, _c in target_variants(cfg) if name not in installed
+        name for name in declared if name not in installed
     ]

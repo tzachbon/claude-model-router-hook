@@ -31,40 +31,32 @@ def _env_model_warning(decision_model):
     )
 
 
-def _agent_dirs():
-    """Directories a routed variant can resolve from, in resolution order.
-
-    The plugin's own agents dir (scoped names) then ~/.claude/agents (bare
-    names, manual installs).
-    """
-    dirs = []
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if plugin_root:
-        dirs.append(os.path.join(plugin_root, "agents"))
-    dirs.append(str(Path.home() / ".claude" / "agents"))
-    return dirs
-
-
 def _resolve_variant(variant):
-    """Subagent_type for a variant, or None when no agent file backs it.
+    """Subagent_type for a variant, or None when no usable agent file backs it.
 
     A plugin-scoped name resolves only under a plugin install, so it is used
     only when the file is actually present under CLAUDE_PLUGIN_ROOT: some hosts
     substitute ${CLAUDE_PLUGIN_ROOT} textually in hooks.json without exporting
     it, and the bare name still resolves against ~/.claude/agents (F6).
 
-    Returning None when neither location has the file is deliberate. The
-    variant set is config-derived, so an edited config can declare a variant
-    the last install never generated; naming it would hand the host a
-    subagent_type that does not exist. Model-only injection is the honest
-    degradation, and the caller says so in a systemMessage.
+    "Present" means variants.is_installed, not path existence. A directory, an
+    unreadable file, a symlink to a directory, or a hand-written file occupying
+    the name are all things the host cannot spawn, and the last of those is
+    precisely the file the generator refuses to overwrite: auto-selecting it
+    here would undo that protection at runtime.
+
+    Returning None is deliberate. The variant set is config-derived, so an
+    edited config can declare a variant the last install never generated;
+    naming it would hand the host a subagent_type that does not resolve.
+    Model-only injection is the honest degradation, and the caller says so in a
+    systemMessage.
     """
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if plugin_root and os.path.exists(
-        os.path.join(plugin_root, "agents", variant + ".md")
+    if plugin_root and variants.is_installed(
+        os.path.join(plugin_root, "agents"), variant
     ):
         return PLUGIN_PREFIX + variant
-    if os.path.exists(str(Path.home() / ".claude" / "agents" / (variant + ".md"))):
+    if variants.is_installed(str(Path.home() / ".claude" / "agents"), variant):
         return variant
     return None
 
@@ -165,15 +157,22 @@ def main():
         sys.exit(0)
 
     messages = []
-    if uninstalled and decision.effort:
-        # Declared by the config but never generated: the config changed after
-        # install, or a project config declares a target the global install did
-        # not see. Naming it would hand the host a subagent_type that does not
-        # exist, so inject the model alone and say why (F7).
+    if uninstalled:
+        # Declared by the config but not installed as a usable agent file: the
+        # config changed after install, a project config declares a target the
+        # global install did not see, or something else occupies the name.
+        # Naming it would hand the host a subagent_type that does not resolve,
+        # so inject the model alone and say why (F7). Warned even for a haiku
+        # decision that carries no effort: the missing variant is the point.
+        effort_note = (
+            f", so effort {decision.effort} is advisory only"
+            if decision.effort
+            else ""
+        )
         messages.append(
             f"Model router: injected model {decision.model}; routed variant "
-            f"{uninstalled} is declared by the config but not installed, so "
-            f"effort {decision.effort} is advisory only. Re-run install.sh."
+            f"{uninstalled} is declared by the config but not installed"
+            f"{effort_note}. Re-run install.sh."
         )
     elif not variant and decision.effort:
         # No matching variant at all (custom subagent_type, or a target the
