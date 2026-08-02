@@ -13,6 +13,7 @@ config. Edit the row copy in CLASS_ROWS here, nowhere else.
 import textwrap
 
 from .config import DEFAULTS
+from .ladder import TIERS
 from .policy import target_for_class
 
 # Per-class "When to use" copy; tuple order is the table row order. The model
@@ -68,63 +69,111 @@ _HEADER = (
 
 _SELECTION_HEADER = "\n### Sub-agent model selection (MANDATORY)\n\n"
 
-_SELECTION_BODY = (
+_SELECTION_LEAD = (
     "When calling the Agent tool, set the model parameter to match the task "
-    "class above. Never default all sub-agents to {architecture}. Match the "
-    "model to the work: mechanical work goes to {mechanical}, standard coding "
-    "to {implementation}, deep analysis to {architecture}, and only "
-    "platform-scale efforts to {extreme}."
+    "class above."
 )
+
+# Clause per class for the closing sentence. A class the router will not route
+# contributes no clause, so the prose never names a model for it.
+_SELECTION_CLAUSES = (
+    ("mechanical", "mechanical work goes to "),
+    ("implementation", "standard coding to "),
+    ("architecture", "deep analysis to "),
+    ("extreme", "only platform-scale efforts to "),
+)
+
+_SELECTION_NONE = (
+    " No class is routable under this config, so the current model and effort "
+    "pass through unmodified."
+)
+
+# Rendered in the model and effort columns for a class the router refuses to
+# route. Matches the abstain row, which describes the same outcome.
+UNROUTABLE_MODEL = "(no routing)"
+UNROUTABLE_EFFORT = "-"
 
 
 def resolved_targets(cfg=None):
-    """Map class name -> (model, effort) for every advisory row.
+    """Map class name -> (model, effort), or None where the class is unroutable.
 
-    Resolution goes through policy.target_for_class so the advertised table and
-    the router's actual choice cannot drift. Never raises: cfg None, a config
-    missing a class, or a class whose target is unusable all fall back to the
-    shipped DEFAULTS target for that class.
+    Resolution goes through policy.target_for_class, the same function
+    enforcement calls, so the advertised table and the routing decision cannot
+    disagree. A target enforcement refuses is reported as unroutable rather
+    than quietly replaced by a shipped default: substituting one would
+    advertise a model the config does not declare and a decision the hook will
+    never make, which is the exact split this module exists to close.
+
+    cfg None or not a dict renders the shipped defaults, which is the
+    committed-doc form. Never raises.
     """
+    if not isinstance(cfg, dict):
+        cfg = DEFAULTS
     targets = {}
     for klass, _when in CLASS_ROWS:
-        decision = None
-        if isinstance(cfg, dict):
-            try:
-                decision = target_for_class(klass, cfg)
-            except Exception:
-                decision = None
-        if decision is None:
-            default = DEFAULTS["classes"][klass]["target"]
-            targets[klass] = (default["model"], default.get("effort"))
-        else:
-            targets[klass] = (decision.model, decision.effort)
+        try:
+            decision = target_for_class(klass, cfg)
+        except Exception:
+            decision = None
+        targets[klass] = None if decision is None else (decision.model, decision.effort)
     return targets
+
+
+def _closing_paragraph(targets):
+    """The MANDATORY paragraph, naming only classes the router will route."""
+    clauses = [
+        prefix + targets[klass][0]
+        for klass, prefix in _SELECTION_CLAUSES
+        if targets.get(klass)
+    ]
+    if not clauses:
+        return _SELECTION_LEAD + _SELECTION_NONE
+
+    # "Never default all sub-agents to X": the deep-analysis tier, or the
+    # highest routable one when that class is unroutable.
+    top = targets.get("architecture")
+    if not top:
+        routable = [t for t in targets.values() if t]
+        top = max(routable, key=lambda t: TIERS.index(t[0]))
+
+    if len(clauses) == 1:
+        joined = clauses[0]
+    elif len(clauses) == 2:
+        joined = clauses[0] + " and " + clauses[1]
+    else:
+        joined = ", ".join(clauses[:-1]) + ", and " + clauses[-1]
+    return (
+        _SELECTION_LEAD
+        + " Never default all sub-agents to "
+        + top[0]
+        + ". Match the model to the work: "
+        + joined
+        + "."
+    )
 
 
 def render_advisory(cfg=None):
     """Render the advisory markdown for a resolved config (DEFAULTS when None)."""
     targets = resolved_targets(cfg)
 
-    rows = [
-        "| {klass} | {model} | {effort} | {when} |".format(
-            klass=klass,
-            model=targets[klass][0],
-            effort=targets[klass][1] or "none",
-            when=when,
+    rows = []
+    for klass, when in CLASS_ROWS:
+        target = targets[klass]
+        model = target[0] if target else UNROUTABLE_MODEL
+        effort = (target[1] or "none") if target else UNROUTABLE_EFFORT
+        rows.append(
+            "| {klass} | {model} | {effort} | {when} |".format(
+                klass=klass, model=model, effort=effort, when=when
+            )
         )
-        for klass, when in CLASS_ROWS
-    ]
     rows.append(ABSTAIN_ROW)
 
-    body = _SELECTION_BODY.format(
-        **{klass: target[0] for klass, target in targets.items()}
-    )
     return (
         _HEADER
         + "\n".join(rows)
         + "\n"
         + _SELECTION_HEADER
-        + textwrap.fill(body, width=WRAP_WIDTH)
+        + textwrap.fill(_closing_paragraph(targets), width=WRAP_WIDTH)
         + "\n"
     )
 
@@ -133,44 +182,92 @@ def render_advisory(cfg=None):
 ADVISORY_MD = render_advisory()
 
 
-def render_session_context(current_model, cfg=None):
-    """Return SessionStart additionalContext text for the resolved config."""
-    targets = resolved_targets(cfg)
-    mechanical = targets["mechanical"][0]
-    implementation = targets["implementation"][0]
-    architecture = targets["architecture"][0]
+# Per-tier hint: a lead sentence plus clauses that each name one class target.
+# A clause whose class is unroutable is dropped rather than rendered with a
+# substituted default, for the same reason the table reports it unroutable.
+_TIER_HINTS = (
+    (
+        "fable",
+        "You are currently on fable. Reserve it for extreme, platform-scale "
+        "work; route everything lighter down the ladder.",
+        (),
+    ),
+    (
+        "opus",
+        "You are currently on opus.",
+        (
+            ("mechanical", "for mechanical tasks {model} is cheaper"),
+            ("implementation", "for standard implementation {model} suffices"),
+        ),
+    ),
+    (
+        "sonnet",
+        "You are currently on sonnet.",
+        (
+            ("mechanical", "for mechanical tasks {model} is cheaper"),
+            ("architecture", "for architecture or deep analysis {model} is better"),
+        ),
+    ),
+    (
+        "haiku",
+        "You are currently on haiku.",
+        (
+            ("implementation", "for implementation work prefer {model}"),
+            ("architecture", "for deep analysis or architecture prefer {model}"),
+        ),
+    ),
+)
 
+DIVERGENCE_HEADER = "\n### Routed variants out of date\n\n"
+
+DIVERGENCE_BODY = (
+    "This config declares routed subagent variants with no agent file "
+    "installed: {names}. Spawns that would use them fall back to injecting the "
+    "model alone, which leaves their effort advisory only. Re-run install.sh "
+    "to generate the missing variants."
+)
+
+
+def _tier_hint(current_model, targets):
+    """The "Your own tier" sentence for the session's current model."""
     model = str(current_model or "unknown")
     lower = model.lower()
-    if "fable" in lower:
-        hint = (
-            "You are currently on fable. Reserve it for extreme, "
-            "platform-scale work; route everything lighter down the ladder."
+    for tier, lead, clauses in _TIER_HINTS:
+        if tier not in lower:
+            continue
+        rendered = [
+            template.format(model=targets[klass][0])
+            for klass, template in clauses
+            if targets.get(klass)
+        ]
+        if not rendered:
+            return lead
+        rendered[0] = rendered[0][0].upper() + rendered[0][1:]
+        return lead + " " + "; ".join(rendered) + "."
+    return "Current model: " + model + "."
+
+
+def render_session_context(current_model, cfg=None, missing_variants=()):
+    """Return SessionStart additionalContext text for the resolved config.
+
+    missing_variants names declared variants with no agent file installed; a
+    non-empty list appends a section telling the user how to fix it, rather
+    than letting spawns degrade to model-only injection silently.
+    """
+    targets = resolved_targets(cfg)
+    context = (
+        render_advisory(cfg)
+        + "\n### Your own tier\n\n"
+        + _tier_hint(current_model, targets)
+        + "\n"
+    )
+    if missing_variants:
+        context += (
+            DIVERGENCE_HEADER
+            + textwrap.fill(
+                DIVERGENCE_BODY.format(names=", ".join(sorted(missing_variants))),
+                width=WRAP_WIDTH,
+            )
+            + "\n"
         )
-    elif "opus" in lower:
-        hint = (
-            "You are currently on opus. For mechanical tasks "
-            + mechanical
-            + " is cheaper; for standard implementation "
-            + implementation
-            + " suffices."
-        )
-    elif "sonnet" in lower:
-        hint = (
-            "You are currently on sonnet. For mechanical tasks "
-            + mechanical
-            + " is cheaper; for architecture or deep analysis "
-            + architecture
-            + " is better."
-        )
-    elif "haiku" in lower:
-        hint = (
-            "You are currently on haiku. For implementation work prefer "
-            + implementation
-            + "; for deep analysis or architecture prefer "
-            + architecture
-            + "."
-        )
-    else:
-        hint = "Current model: " + model + "."
-    return render_advisory(cfg) + "\n### Your own tier\n\n" + hint + "\n"
+    return context
