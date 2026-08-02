@@ -19,6 +19,7 @@ matching a pre-key rendering) are ever overwritten or pruned.
 import os
 import re
 
+from .ladder import EFFORTS, TIERS
 from .policy import gate_outcomes, target_for_class
 from .taxonomy import CLASSES
 
@@ -110,13 +111,27 @@ def agent_markdown(name, model, effort, classes):
     return "\n".join(lines)
 
 
-# Rendering shipped before the ownership key existed. Matched structurally, as
-# a whole file, so a hand-written note that merely quotes the description text
-# is not mistaken for a generated file.
+def _legacy_markdown(name, model, effort, classes):
+    """The rendering shipped before the ownership key existed."""
+    lines = [
+        "---",
+        "name: " + name,
+        "description: " + AGENT_DESCRIPTION.format(classes=_join(list(classes))),
+        "model: " + model,
+    ]
+    if effort is not None:
+        lines.append("effort: " + effort)
+    lines += ["---", "", AGENT_BODY, ""]
+    return "\n".join(lines)
+
+
+# Shape of the pre-key rendering. Used only to recover the (name, model,
+# effort, classes) tuple a candidate file claims; the claim is then re-rendered
+# and compared byte for byte, so matching this pattern proves nothing on its own.
 _LEGACY_RE = re.compile(
     r"^---\n"
     r"name: (?P<name>[^\n]+)\n"
-    r"description: Router-managed variant for [^\n]+\. "
+    r"description: Router-managed variant for (?P<classes>[^\n]+) tasks\. "
     r"Spawned by the model router hook; do not invoke directly\.\n"
     r"model: (?P<model>[^\n]+)\n"
     r"(?:effort: (?P<effort>[^\n]+)\n)?"
@@ -124,28 +139,64 @@ _LEGACY_RE = re.compile(
 )
 
 
+def _split_classes(joined):
+    """Reverse _join, or None when the text is not a list of routable classes."""
+    if " and " not in joined:
+        parts = [joined]
+    else:
+        head, _sep, last = joined.rpartition(" and ")
+        parts = ([p for p in head.split(", ")] if head else []) + [last]
+    parts = [p for p in parts if p]
+    if not parts or any(p not in CLASSES for p in parts):
+        return None
+    return tuple(parts)
+
+
 def is_generated(text, filename=None):
-    """True when this generator wrote the file, by declaration or exact match.
+    """True when this generator wrote the file, by declaration or byte equality.
 
-    Two accepted proofs, both structural:
+    Two accepted proofs:
       - a `router-generated: true` key in the frontmatter block
-      - byte equality with the pre-key rendering, for files written before the
-        key existed (upgrade path)
+      - byte equality with the pre-key rendering of the exact variant the file
+        claims to be, for files written before the key existed (upgrade path)
 
-    Everything else is foreign and is never overwritten or pruned. Content is
-    never sniffed for a marker substring: a hand-written file that quotes the
-    description in prose must not read as ours.
+    The second proof reads the claimed (name, model, effort, classes) out of
+    the file, rejects any tuple this generator could not have emitted (a model
+    outside the ladder, an effort outside the scale, an effort on haiku, a
+    class list that is not routable classes, a name that is not the variant
+    name for that pair or does not match the filename), re-renders it, and
+    compares the whole file. Matching the shape is not enough: a hand-written
+    agent that keeps the boilerplate body but names its own model is foreign,
+    and is never overwritten or pruned.
     """
     if not isinstance(text, str):
         return False
     if _frontmatter_flag(text):
         return True
+
     match = _LEGACY_RE.match(text)
     if match is None:
         return False
-    if filename is None:
-        return True
-    return match.group("name") == os.path.splitext(os.path.basename(filename))[0]
+    model = match.group("model")
+    effort = match.group("effort")
+    if model not in TIERS:
+        return False
+    if model == "haiku":
+        if effort is not None:
+            return False
+    elif effort not in EFFORTS:
+        return False
+    classes = _split_classes(match.group("classes"))
+    if classes is None:
+        return False
+
+    name = match.group("name")
+    if name != variant_name(model, effort):
+        return False
+    if filename is not None:
+        if name != os.path.splitext(os.path.basename(filename))[0]:
+            return False
+    return text == _legacy_markdown(name, model, effort, classes)
 
 
 def _frontmatter_flag(text):
