@@ -295,6 +295,17 @@ def load_config(global_path=None, cwd=None):
     return _normalize_config(config)
 
 
+def as_dict(value):
+    """The value when it is a dict, else an empty dict.
+
+    User config files are free-form JSON, so any nested container may hold a
+    string, a number or null. Reading one with .get raises, and inside a hook
+    that exits through fail-open as a silent exit 0 with routing disabled and
+    nothing to show for it. Every nested read on a config goes through here.
+    """
+    return value if isinstance(value, dict) else {}
+
+
 def resolve_list(class_cfg, field, defaults):
     """Resolve final keyword/pattern list for a class (v1 semantics, FR-33).
 
