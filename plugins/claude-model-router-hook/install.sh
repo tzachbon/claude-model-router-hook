@@ -28,15 +28,13 @@ cp "$SCRIPT_DIR/hooks/user_prompt_submit.py" "$HOOKS_DIR/user_prompt_submit.py"
 cp "$SCRIPT_DIR/hooks/pre_tool_use.py"       "$HOOKS_DIR/pre_tool_use.py"
 
 # Routed agent variants, generated from the resolved config so only tiers the
-# config actually targets get an agent file. Falls back to copying the
-# committed (DEFAULTS) set if the generator cannot run.
-if python3 "$REPO_ROOT/scripts/generate_variants.py" \
-    --agents-dir "$AGENTS_DIR" --use-user-config; then
-    :
-else
-    echo "Variant generation failed; installing the shipped default set."
-    cp "$SCRIPT_DIR"/agents/routed-*.md "$AGENTS_DIR/"
-fi
+# config actually targets get an agent file. A failure here aborts the install
+# (set -e): the obvious fallback, copying the committed DEFAULTS set, would
+# reinstall variants for tiers this config rejects, which is the bug the
+# generator exists to prevent. A conflict with a hand-written agent file is
+# reported by name and is the user's call to resolve.
+python3 "$REPO_ROOT/scripts/generate_variants.py" \
+    --agents-dir "$AGENTS_DIR" --use-user-config
 
 # Config schema (v1 + v2 shapes)
 cp "$REPO_ROOT/schema/model-router.schema.json" "$SCHEMA_DIR/model-router.schema.json"
