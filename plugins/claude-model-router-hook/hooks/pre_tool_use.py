@@ -31,6 +31,44 @@ def _env_model_warning(decision_model):
     )
 
 
+def _agent_dirs():
+    """Directories a routed variant can resolve from, in resolution order.
+
+    The plugin's own agents dir (scoped names) then ~/.claude/agents (bare
+    names, manual installs).
+    """
+    dirs = []
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root:
+        dirs.append(os.path.join(plugin_root, "agents"))
+    dirs.append(str(Path.home() / ".claude" / "agents"))
+    return dirs
+
+
+def _resolve_variant(variant):
+    """Subagent_type for a variant, or None when no agent file backs it.
+
+    A plugin-scoped name resolves only under a plugin install, so it is used
+    only when the file is actually present under CLAUDE_PLUGIN_ROOT: some hosts
+    substitute ${CLAUDE_PLUGIN_ROOT} textually in hooks.json without exporting
+    it, and the bare name still resolves against ~/.claude/agents (F6).
+
+    Returning None when neither location has the file is deliberate. The
+    variant set is config-derived, so an edited config can declare a variant
+    the last install never generated; naming it would hand the host a
+    subagent_type that does not exist. Model-only injection is the honest
+    degradation, and the caller says so in a systemMessage.
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root and os.path.exists(
+        os.path.join(plugin_root, "agents", variant + ".md")
+    ):
+        return PLUGIN_PREFIX + variant
+    if os.path.exists(str(Path.home() / ".claude" / "agents" / (variant + ".md"))):
+        return variant
+    return None
+
+
 @hookio.fail_open
 def main():
     if hookio.is_child():
@@ -108,22 +146,11 @@ def main():
     updated["model"] = decision.model  # bare alias only (A-1)
     # Variant set comes from the configured class targets, so the hook can only
     # ever select a variant this config declares (and install.sh generated).
-    variant = variants.variant_map(cfg).get((decision.model, decision.effort))
-    if generic and variant:
-        # Plugin-scoped name resolves only under a plugin install; manual
-        # installs copy the agents in unscoped, so emit the bare name there.
-        # Use the scoped prefix only when the shipped agent file actually exists
-        # under CLAUDE_PLUGIN_ROOT: some hosts substitute ${CLAUDE_PLUGIN_ROOT}
-        # textually in hooks.json without exporting it, and the bare name still
-        # resolves against ~/.claude/agents (F6). Residual assumption: a plugin
-        # install exports CLAUDE_PLUGIN_ROOT into the hook process env.
-        prefix = ""
-        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        if plugin_root and os.path.exists(
-            os.path.join(plugin_root, "agents", variant + ".md")
-        ):
-            prefix = PLUGIN_PREFIX
-        updated["subagent_type"] = prefix + variant
+    declared = variants.variant_map(cfg).get((decision.model, decision.effort))
+    variant = _resolve_variant(declared) if (generic and declared) else None
+    uninstalled = declared if (generic and declared and not variant) else None
+    if variant:
+        updated["subagent_type"] = variant
 
     if enforcement == "advisory":
         # Advisory mode: systemMessage only, never updatedInput (AC-3.3 shape).
@@ -138,9 +165,20 @@ def main():
         sys.exit(0)
 
     messages = []
-    if not (generic and variant) and decision.effort:
-        # No matching shipped variant (custom type or overridden target):
-        # model-only injection, effort stays advisory (AC-4.2, AC-5.2).
+    if uninstalled and decision.effort:
+        # Declared by the config but never generated: the config changed after
+        # install, or a project config declares a target the global install did
+        # not see. Naming it would hand the host a subagent_type that does not
+        # exist, so inject the model alone and say why (F7).
+        messages.append(
+            f"Model router: injected model {decision.model}; routed variant "
+            f"{uninstalled} is declared by the config but not installed, so "
+            f"effort {decision.effort} is advisory only. Re-run install.sh."
+        )
+    elif not variant and decision.effort:
+        # No matching variant at all (custom subagent_type, or a target the
+        # config does not declare): model-only injection, effort stays
+        # advisory (AC-4.2, AC-5.2).
         messages.append(
             f"Model router: injected model {decision.model}; no matching "
             f"routed variant, so effort {decision.effort} is advisory only."
@@ -150,7 +188,7 @@ def main():
         messages.append(warning)
 
     hookio.log(
-        "SUBAGENT-REWRITE" if generic and variant else "SUBAGENT-MODEL",
+        "SUBAGENT-REWRITE" if variant else "SUBAGENT-MODEL",
         prompt,
         klass=decision.klass,
         model=decision.model,
