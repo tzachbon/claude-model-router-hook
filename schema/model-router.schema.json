@@ -133,9 +133,9 @@
             },
             "cli_timeout_seconds": {
               "type": "integer",
-              "default": 8,
-              "maximum": 8,
-              "description": "Timeout in seconds for the CLI classifier subprocess. Clamped to at most 8s to stay under the hook budget."
+              "default": 12,
+              "maximum": 12,
+              "description": "Timeout in seconds for the CLI classifier subprocess. Clamped to at most 12s to stay under the hook budget."
             },
             "cache_max_entries": {
               "type": "integer",

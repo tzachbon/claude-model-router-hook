@@ -8,6 +8,7 @@ returns None so the heuristic decision applies (fail-open ladder, AC-7.4).
 import hashlib
 import json
 import os
+import string
 import subprocess
 import tempfile
 import time
@@ -18,10 +19,13 @@ SNIPPET_MAX_CHARS = 1500
 CACHE_FILENAME = "classifier-cache.json"
 EVICT_FRACTION = 0.2
 
-# Hard ceiling on the CLI subprocess timeout. The hooks.json hook budget is 10s;
-# cap the child at 8s to keep a >=2s margin so a slow child can never outlive the
-# hook (a configured cli_timeout_seconds above this is clamped down).
-CLI_TIMEOUT_CEILING = 8
+# Hard ceiling on the CLI subprocess timeout. The hooks.json hook budget is
+# 15s; cap the child at 12s to keep a >=3s margin so a slow child can never
+# outlive the hook (a configured cli_timeout_seconds above this is clamped
+# down). A cold-start `claude -p --model haiku` classification call has been
+# observed taking ~8s on its own, so the ceiling needs real headroom above
+# that, not just above the network noise floor.
+CLI_TIMEOUT_CEILING = 12
 
 # Bump when the taxonomy/classification prompt changes so stale cached
 # classes are invalidated (cache keys include this revision).
@@ -50,11 +54,17 @@ def build_prompt(prompt):
 
 
 def _parse_reply(stdout):
-    """Strip/lower first token; must be a known class or abstain, else None."""
+    """Strip/lower first token; must be a known class or abstain, else None.
+
+    The prompt asks for "ONLY the class word" but haiku doesn't always comply
+    literally (e.g. "Extreme.", "architecture,") so trailing punctuation on
+    the first token is stripped before matching, else a well-formed answer
+    is silently discarded as a parse failure (fail-open, AC-7.4).
+    """
     tokens = (stdout or "").strip().lower().split()
     if not tokens:
         return None
-    reply = tokens[0]
+    reply = tokens[0].strip(string.punctuation)
     if reply in _VALID_REPLIES:
         return reply
     return None

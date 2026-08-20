@@ -12,7 +12,7 @@ DEFAULTS = {
     "subagent_enforcement": "on",
     "classifier": {
         "cli_fallback": True,
-        "cli_timeout_seconds": 8,
+        "cli_timeout_seconds": 12,
         "cache_max_entries": 1000,
     },
     "thresholds": {

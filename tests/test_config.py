@@ -294,7 +294,10 @@ class TestNormalizeConfig(unittest.TestCase):
 
     def test_cli_timeout_garbage_falls_back(self):
         cfg = self._load({"version": 2, "classifier": {"cli_timeout_seconds": "banana"}})
-        self.assertEqual(cfg["classifier"]["cli_timeout_seconds"], 8)
+        self.assertEqual(
+            cfg["classifier"]["cli_timeout_seconds"],
+            DEFAULTS["classifier"]["cli_timeout_seconds"],
+        )
 
     def test_cache_max_entries_string_coerced(self):
         cfg = self._load({"version": 2, "classifier": {"cache_max_entries": "500"}})
