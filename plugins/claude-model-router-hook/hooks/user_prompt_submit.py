@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """UserPromptSubmit entrypoint: warn/autoswitch routing (FR-8..FR-11).
 
-Thin wiring only; all logic lives in the router package. Exit 0 = allow,
-exit 2 = warn or autoswitch notice (stderr, prompt blocked for resend).
+Thin wiring only; all logic lives in the router package. Exit 0 = allow, or
+a warn-mode advisory (non-blocking systemMessage on stdout). Exit 2 = an
+autoswitch notice (stderr, prompt blocked for resend so /model applies now).
 """
 
 import json
@@ -126,7 +127,8 @@ def main():
         print(message, file=sys.stderr)
         sys.exit(2)
 
-    # Warn mode: suggest /model and /effort, block for resend.
+    # Warn mode: advise /model and /effort without blocking the prompt (FR-8;
+    # README promises warn mode "injects an advisory message").
     parts = [f"/model {suggestion}"]
     if decision.effort is not None:
         parts.append(f"/effort {decision.effort}")
@@ -138,11 +140,11 @@ def main():
         klass=decision.klass,
         target_effort=decision.effort,
     )
-    warn_line = f"Run {' and '.join(parts)}, then resend  (~ prefix to skip)"
+    warn_line = f"Router suggests {' and '.join(parts)} for this task (current: {current_model})."
     if hint:
         warn_line += "\n" + hint
-    print(warn_line, file=sys.stderr)
-    sys.exit(2)
+    print(json.dumps({"systemMessage": warn_line}))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
