@@ -64,6 +64,14 @@ opus, and only platform-scale efforts to fable.
 
 ## Installation
 
+### One-line install
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh)"
+```
+
+The one-line wizard defaults both choices to yes. Installation requires Claude Code and Python 3, and uses Claude's plugin manager at user scope. Starring uses your authenticated GitHub CLI; a missing or unauthenticated `gh` command does not erase a successful install result.
+
 ### Plugin install (recommended)
 
 ```bash
@@ -78,10 +86,10 @@ Hooks are registered automatically. Restart Claude Code to activate.
 ```bash
 git clone https://github.com/tzachbon/claude-model-router-hook.git
 cd claude-model-router-hook
-./install.sh
+./plugins/claude-model-router-hook/install.sh
 ```
 
-The plugin registers its `SessionStart`, `UserPromptSubmit`, and `PreToolUse` hooks through its bundled `hooks.json`; there is nothing to wire into `settings.json` by hand. Restart Claude Code to activate.
+The manual installer copies the router files into `~/.claude` and prints the `settings.json` entries to register. Add those entries, then restart Claude Code.
 
 ## Override
 

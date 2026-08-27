@@ -22,6 +22,7 @@ import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN_DIR = os.path.join(REPO_ROOT, "plugins", "claude-model-router-hook")
+MANUAL_INSTALLER = os.path.join(PLUGIN_DIR, "install.sh")
 HOOKS_DIR = os.path.join(PLUGIN_DIR, "hooks")
 AGENTS_DIR = os.path.join(PLUGIN_DIR, "agents")
 GENERATOR = os.path.join(REPO_ROOT, "scripts", "generate_variants.py")
@@ -689,7 +690,7 @@ class TestVariantGenerator(unittest.TestCase):
 
 
 class TestInstallScript(unittest.TestCase):
-    """install.sh must never fall back to a set the config rejects."""
+    """The manual installer must never restore a config-rejected tier."""
 
     def test_sonnet_free_config_installs_no_sonnet_agent(self):
         with tempfile.TemporaryDirectory() as home:
@@ -703,7 +704,7 @@ class TestInstallScript(unittest.TestCase):
             env = dict(os.environ)
             env["HOME"] = home
             proc = subprocess.run(
-                ["bash", os.path.join(REPO_ROOT, "install.sh")],
+                ["bash", MANUAL_INSTALLER],
                 capture_output=True, text=True, env=env,
             )
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -727,7 +728,7 @@ class TestInstallScript(unittest.TestCase):
             env = dict(os.environ)
             env["HOME"] = home
             proc = subprocess.run(
-                ["bash", os.path.join(REPO_ROOT, "install.sh")],
+                ["bash", MANUAL_INSTALLER],
                 capture_output=True, text=True, env=env,
             )
             self.assertNotEqual(proc.returncode, 0)
@@ -753,7 +754,7 @@ class TestInstallScript(unittest.TestCase):
             env = dict(os.environ)
             env["HOME"] = home
             proc = subprocess.run(
-                ["bash", os.path.join(REPO_ROOT, "install.sh")],
+                ["bash", MANUAL_INSTALLER],
                 capture_output=True, text=True, env=env,
             )
             self.assertNotEqual(proc.returncode, 0)
