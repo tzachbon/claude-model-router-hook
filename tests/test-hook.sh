@@ -68,20 +68,23 @@ make_home_autoswitch() {
 }
 
 # Run the hook with a given prompt and HOME.
-# Returns exit code via $HOOK_EXIT, stderr via $HOOK_STDERR.
+# Returns exit code via $HOOK_EXIT, stdout via $HOOK_STDOUT, stderr via $HOOK_STDERR.
+# Warn-mode advisories are a non-blocking systemMessage on stdout (exit 0);
+# autoswitch notices are still stderr + exit 2 (prompt blocked for resend).
 run_hook() {
     local prompt="$1"
     local home_dir="$2"
     local cwd="${3:-$home_dir}"
-    local payload stderr_file
+    local payload stdout_file stderr_file
     payload=$(printf '{"prompt":"%s"}' "$prompt")
+    stdout_file=$(mktemp)
     stderr_file=$(mktemp)
 
-    # Capture stderr to file, discard stdout, capture exit code without || true
     # HOME must be set on the python command (not printf) so the entrypoint sees it
-    (cd "$cwd" && printf '%s' "$payload" | HOME="$home_dir" python3 "$HOOK" >"$stderr_file.stdout" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
+    (cd "$cwd" && printf '%s' "$payload" | HOME="$home_dir" python3 "$HOOK" >"$stdout_file" 2>"$stderr_file") && HOOK_EXIT=0 || HOOK_EXIT=$?
+    HOOK_STDOUT=$(cat "$stdout_file")
     HOOK_STDERR=$(cat "$stderr_file")
-    rm -f "$stderr_file" "$stderr_file.stdout"
+    rm -f "$stdout_file" "$stderr_file"
 }
 
 assert_routes_to() {
@@ -89,20 +92,23 @@ assert_routes_to() {
     local expected_model="$2"  # e.g. "opus", "haiku", "sonnet", or "allow"
 
     if [ "$expected_model" = "allow" ]; then
-        if [ "$HOOK_EXIT" -eq 0 ]; then
+        if [ "$HOOK_EXIT" -eq 0 ] && [ -z "$HOOK_STDOUT" ]; then
             echo "  PASS: $test_name"
             PASS=$((PASS + 1))
         else
-            echo "  FAIL: $test_name - expected exit 0 (allow), got $HOOK_EXIT | stderr: $HOOK_STDERR"
+            echo "  FAIL: $test_name - expected exit 0 (allow) with no output, got exit=$HOOK_EXIT stdout='$HOOK_STDOUT' stderr='$HOOK_STDERR'"
             FAIL=$((FAIL + 1))
             ERRORS+=("$test_name")
         fi
     else
-        if [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "$expected_model"; then
+        # Warn mode surfaces on stdout without blocking; autoswitch still
+        # blocks via stderr + exit 2. Either counts as routing to $expected_model.
+        if { [ "$HOOK_EXIT" -eq 0 ] && echo "$HOOK_STDOUT" | grep -qi "$expected_model"; } ||
+            { [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "$expected_model"; }; then
             echo "  PASS: $test_name"
             PASS=$((PASS + 1))
         else
-            echo "  FAIL: $test_name - expected exit 2 with '$expected_model', got exit=$HOOK_EXIT stderr='$HOOK_STDERR'"
+            echo "  FAIL: $test_name - expected '$expected_model' via warn (exit 0, stdout) or autoswitch (exit 2, stderr), got exit=$HOOK_EXIT stdout='$HOOK_STDOUT' stderr='$HOOK_STDERR'"
             FAIL=$((FAIL + 1))
             ERRORS+=("$test_name")
         fi
@@ -310,16 +316,17 @@ assert_routes_to "system-reminder tag passes through" "allow"
 
 rm -rf "$HOME_DIR" "$HOME_OPUS"
 
-# ── Assert HOOK_STDERR contains a fixed substring ────────────────────────────
-assert_stderr_contains() {
+# Assert a fixed substring appears in either stream: warn advisories are on
+# stdout (exit 0), autoswitch notices are on stderr (exit 2).
+assert_output_contains() {
     local test_name="$1"
     local needle="$2"
 
-    if echo "$HOOK_STDERR" | grep -qF -- "$needle"; then
+    if echo "$HOOK_STDOUT$HOOK_STDERR" | grep -qF -- "$needle"; then
         echo "  PASS: $test_name"
         PASS=$((PASS + 1))
     else
-        echo "  FAIL: $test_name - stderr missing '$needle' | stderr: $HOOK_STDERR"
+        echo "  FAIL: $test_name - missing '$needle' | stdout: $HOOK_STDOUT stderr: $HOOK_STDERR"
         FAIL=$((FAIL + 1))
         ERRORS+=("$test_name")
     fi
@@ -335,7 +342,7 @@ HOME_DIR=$(make_home "sonnet")
 
 run_hook "$EXTREME_PROMPT" "$HOME_DIR"
 assert_routes_to "extreme prompt on sonnet suggests fable" "fable"
-assert_stderr_contains "extreme warn emits /effort suggestion" "/effort"
+assert_output_contains "extreme warn emits /effort suggestion" "/effort"
 
 rm -rf "$HOME_DIR"
 
@@ -346,8 +353,8 @@ rm -rf "$HOME_DIR"
 HOME_1M=$(make_home "sonnet[1m]")
 
 run_hook "$EXTREME_PROMPT" "$HOME_1M"
-assert_stderr_contains "tier change drops [1m] suffix from /model fable" "/model fable and"
-assert_stderr_contains "tier-change suggestion still carries /effort" "/effort"
+assert_output_contains "tier change drops [1m] suffix from /model fable" "/model fable and"
+assert_output_contains "tier-change suggestion still carries /effort" "/effort"
 
 rm -rf "$HOME_1M"
 
@@ -364,7 +371,7 @@ rm -rf "$HOME_D1"
 HOME_D2=$(make_home_effort "opus" "medium")
 run_hook "$ARCH_PROMPT" "$HOME_D2"
 assert_routes_to "effort distance 2 mismatch warns" "opus"
-assert_stderr_contains "effort distance 2 warn suggests /effort xhigh" "/effort xhigh"
+assert_output_contains "effort distance 2 warn suggests /effort xhigh" "/effort xhigh"
 rm -rf "$HOME_D2"
 
 # F2: an effort-only change on the SAME tier keeps the [1m] suffix. opus[1m]
@@ -372,8 +379,8 @@ rm -rf "$HOME_D2"
 # effort, so the suggestion carries the suffix: "/model opus[1m]".
 HOME_SAME=$(make_home_effort "opus[1m]" "medium")
 run_hook "$ARCH_PROMPT" "$HOME_SAME"
-assert_stderr_contains "same-tier effort change keeps [1m] suffix on /model opus" "/model opus[1m]"
-assert_stderr_contains "same-tier effort change still suggests /effort xhigh" "/effort xhigh"
+assert_output_contains "same-tier effort change keeps [1m] suffix on /model opus" "/model opus[1m]"
+assert_output_contains "same-tier effort change still suggests /effort xhigh" "/effort xhigh"
 rm -rf "$HOME_SAME"
 
 # ── PreToolUse runner + assertions (FR-41, AC-4.x, AC-5.1, AC-10.5) ──────────
@@ -542,7 +549,7 @@ PROJ_CLEAN=$(mktemp -d)
 
 run_hook "$AS_ARCH_PROMPT" "$HOME_AS" "$PROJ_CLEAN"
 assert_routes_to "autoswitch tier mismatch exits 2 with opus notice" "opus"
-assert_stderr_contains "autoswitch stderr claims new sessions, not live switch" "new sessions"
+assert_output_contains "autoswitch stderr claims new sessions, not live switch" "new sessions"
 assert_settings "autoswitch writes model+effortLevel, preserves foreign key" "$HOME_AS" \
     'import json,sys; s=json.load(open(sys.argv[1])); assert "opus" in s["model"]; assert s.get("effortLevel"); assert s["theme"]=="dark"'
 
@@ -595,9 +602,10 @@ echo "--- Suite 15: Capability gate blocks haiku downroute on main path ---"
 # the subagent path, so the main path could still suggest haiku here.
 assert_no_haiku() {
     local test_name="$1"
-    # Pass unless the hook warned (exit 2) suggesting haiku.
-    if [ "$HOOK_EXIT" -eq 2 ] && echo "$HOOK_STDERR" | grep -qi "haiku"; then
-        echo "  FAIL: $test_name - suggested haiku despite capability gate | stderr: $HOOK_STDERR"
+    # Pass unless the hook suggested haiku, on either stream (warn is stdout,
+    # autoswitch is stderr).
+    if echo "$HOOK_STDOUT$HOOK_STDERR" | grep -qi "haiku"; then
+        echo "  FAIL: $test_name - suggested haiku despite capability gate | stdout: $HOOK_STDOUT stderr: $HOOK_STDERR"
         FAIL=$((FAIL + 1))
         ERRORS+=("$test_name")
     else
