@@ -3,23 +3,6 @@ set -euo pipefail
 
 REPOSITORY="tzachbon/claude-model-router-hook"
 PLUGIN="claude-model-router-hook@claude-model-router-hook"
-SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
-BUNDLED_INSTALLER=""
-
-if [ -n "$SCRIPT_SOURCE" ]; then
-    case "$SCRIPT_SOURCE" in
-        */*) SCRIPT_DIR="${SCRIPT_SOURCE%/*}" ;;
-        *) SCRIPT_DIR="." ;;
-    esac
-    if [ -f "$SCRIPT_DIR/plugins/claude-model-router-hook/install.sh" ]; then
-        BUNDLED_INSTALLER="$SCRIPT_DIR/plugins/claude-model-router-hook/install.sh"
-    fi
-fi
-
-# Preserve the original non-interactive checkout installer contract.
-if [ ! -t 0 ] && [ -n "$BUNDLED_INSTALLER" ]; then
-    exec bash "$BUNDLED_INSTALLER" "$@"
-fi
 
 BANNER_LINES=(
     ' __ .        .     .  .     .   .  .__'
@@ -89,12 +72,6 @@ ask_yes() {
 }
 
 install_with_claude() {
-    if [ -n "$BUNDLED_INSTALLER" ]; then
-        echo "Installing the bundled router files globally."
-        bash "$BUNDLED_INSTALLER" || return 1
-        return
-    fi
-
     command -v claude >/dev/null 2>&1 || {
         echo "Claude Code is required. Install claude, then run this command again." >&2
         return 1

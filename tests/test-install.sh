@@ -6,8 +6,6 @@ INSTALLER="$REPO_ROOT/install.sh"
 TEST_BASE="${TMPDIR:-/tmp}"
 TEST_BASE="${TEST_BASE%/}"
 TEST_ROOT="$(mktemp -d "$TEST_BASE/claude-model-router-hook-test.XXXXXX")"
-REMOTE_INSTALLER="$TEST_ROOT/install.sh"
-cp "$INSTALLER" "$REMOTE_INSTALLER"
 
 cleanup() {
     case "$TEST_ROOT" in
@@ -128,7 +126,7 @@ run_case() {
     local input="$1"
     local case_path="$2"
     set +e
-    printf '%s' "$input" | HOME="$CASE_HOME" PATH="$case_path" /bin/bash "$REMOTE_INSTALLER" > "$CASE_OUTPUT" 2>&1
+    printf '%s' "$input" | HOME="$CASE_HOME" PATH="$case_path" /bin/bash "$INSTALLER" > "$CASE_OUTPUT" 2>&1
     CASE_STATUS=$?
     set -e
 }
