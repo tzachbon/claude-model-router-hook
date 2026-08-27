@@ -64,6 +64,14 @@ opus, and only platform-scale efforts to fable.
 
 ## Installation
 
+### One-line install
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh)"
+```
+
+The wizard defaults both choices to yes. Installation requires Claude Code and Python 3, and uses Claude's plugin manager at user scope. Starring uses your authenticated GitHub CLI; a missing or unauthenticated `gh` command does not erase a successful install result.
+
 ### Plugin install (recommended)
 
 ```bash
