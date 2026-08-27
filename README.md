@@ -8,35 +8,37 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-bash-blue)
 
-<video src="docs/slides/public/model-router.mov" width="887" controls></video>
-
 </div>
 
-A Claude Code hook system that classifies every prompt into a task class and effort level, then routes it to the right model. Warning is the default; autoswitch is opt-in. Sub-agent routing is enforced at spawn time so spawned agents also land on the right tier.
+## Install
 
-## Features
+```bash
+installer="$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/361031c9381fd6d2b5c47b311b7037015b3c2f6d/install.sh)" && bash -c "$installer"
+```
 
-- Classifies each prompt into a task class and effort level with a heuristics-first classifier; no API key required
-- Warns by default; opt-in autoswitch writes the recommended model to `~/.claude/settings.json` for new sessions only
-- Enforces sub-agent routing at spawn time via a `PreToolUse` hook, and injects the tier rules into every session via `SessionStart`
-- Effort-first routing with boundary damping, so near-threshold prompts warn instead of flipping the model
-- Prefix any prompt with `~` or `<` to bypass classification and keep the current model
+The wizard asks whether to install globally and star the GitHub repository. Both prompts default to yes. Installation requires Claude Code and Python 3; starring requires an authenticated `gh` command. Restart Claude Code after installation.
 
-## How It Works
+<video src="docs/slides/public/model-router.mov" width="887" controls></video>
 
-Three hooks run inside Claude Code, all backed by a shared Python router package:
+Claude Model Router classifies each prompt by task and effort, then recommends the matching Claude model. It warns by default. Autoswitch is opt-in and only affects new sessions.
 
-**`user_prompt_submit.py`** (`UserPromptSubmit`) classifies the incoming prompt into a task class and effort level, then compares the recommendation against your current model. In the default `warn` mode it injects an advisory message. In autoswitch mode it writes the recommended model to `~/.claude/settings.json` so the next session starts on the right tier; running sessions are never switched mid-flight.
+## What it does
 
-**`pre_tool_use.py`** (`PreToolUse` on `Agent`/`Task`) enforces sub-agent routing at spawn time. Generic spawns are rewritten to the matching `routed-*` agent variant, custom agent types get a model-only recommendation, and an explicit model set by the caller is always respected. Controlled by `subagent_enforcement` (`on` | `advisory` | `off`, default `on`).
+- Routes prompts with local heuristics and an optional Claude Code fallback.
+- Routes `Agent` and `Task` sub-agents when they spawn. An explicit model always wins.
+- Dampens borderline classifications instead of switching tiers on weak evidence.
 
-**`session_init.py`** (`SessionStart`) injects the task-class rules below into every session so you and your sub-agents share one routing table.
+## How it works
+
+| Hook | Job |
+|---|---|
+| `UserPromptSubmit` | Classifies the prompt and warns or writes the next-session model. |
+| `PreToolUse` | Routes `Agent` and `Task` spawns. |
+| `SessionStart` | Adds the shared task-class rules to each session. |
+
+Errors fail open and leave the prompt unchanged. Prefix a prompt with `~` or `<` to skip routing.
 
 ![Sub-agent spawned with the routed model](assets/sub-agent-routing.png)
-
-### Routing model
-
-Routing is effort-first: the classifier picks an effort level, then the model that fits it. `effort_warn_distance` damps borderline cases so a prompt near a class boundary warns rather than flipping the model. The classifier is heuristics-first (keyword and pattern matching) with an optional headless `claude -p --model haiku` fallback for ambiguous prompts. The fallback needs no API key (it uses your Claude Code auth), caches results by prompt hash in the plugin data dir, and can be disabled with `classifier.cli_fallback: false`. Everything fails open: any error passes the prompt through unmodified.
 
 <!-- advisory:start -->
 ## Model Tier Rules
@@ -62,42 +64,9 @@ mechanical work goes to haiku, standard coding to sonnet, deep analysis to
 opus, and only platform-scale efforts to fable.
 <!-- advisory:end -->
 
-## Installation
+## Configure
 
-### One-line install
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh)"
-```
-
-The one-line wizard defaults both choices to yes. Installation requires Claude Code and Python 3, and uses Claude's plugin manager at user scope. Starring uses your authenticated GitHub CLI; a missing or unauthenticated `gh` command does not erase a successful install result.
-
-### Plugin install (recommended)
-
-```bash
-claude plugin marketplace add tzachbon/claude-model-router-hook
-claude plugin install claude-model-router-hook@claude-model-router-hook
-```
-
-Hooks are registered automatically. Restart Claude Code to activate.
-
-### Manual
-
-```bash
-git clone https://github.com/tzachbon/claude-model-router-hook.git
-cd claude-model-router-hook
-./plugins/claude-model-router-hook/install.sh
-```
-
-The manual installer copies the router files into `~/.claude` and prints the `settings.json` entries to register. Add those entries, then restart Claude Code.
-
-## Override
-
-Prefix any prompt with `~` or `<` to skip classification entirely and keep the current model active.
-
-## Configuration
-
-Config lives in `~/.claude/model-router.json` (global) and `.claude/model-router.json` inside a project (project wins), merged over built-in defaults. Both files are optional. The schema is v2; a v1 config is migrated in memory at load time and your files are never rewritten. Example:
+Use `~/.claude/model-router.json` globally or `.claude/model-router.json` in one project. Project settings win.
 
 ```json
 {
@@ -110,41 +79,41 @@ Config lives in `~/.claude/model-router.json` (global) and `.claude/model-router
 }
 ```
 
-Key knobs:
-
 | Key | Default | Effect |
 |---|---|---|
-| `apply_mode` | `warn` | `warn` advises only; autoswitch writes the recommended model to `~/.claude/settings.json` for new sessions only, never the live one. |
-| `allow_fable_autoswitch` | `false` | Extra gate: even in autoswitch mode, routing up to `fable` only writes when this is on. |
-| `subagent_enforcement` | `on` | `on` rewrites/injects sub-agent routing in `PreToolUse`; `advisory` recommends only; `off` disables it. |
-| `classifier.cli_fallback` | `true` | Enables the optional headless `claude -p --model haiku` classifier fallback for ambiguous prompts. |
-| `thresholds.effort_warn_distance` | `2` | Boundary damping: prompts within this effort distance of a class edge warn instead of switching. |
+| `apply_mode` | `warn` | Warn or write the model for the next session. |
+| `allow_fable_autoswitch` | `false` | Allow autoswitching to `fable`. |
+| `subagent_enforcement` | `on` | Route, advise, or ignore sub-agent spawns. |
+| `classifier.cli_fallback` | `true` | Use `claude -p --model haiku` for ambiguous prompts. |
+| `thresholds.effort_warn_distance` | `2` | Warn near a class boundary. |
 
-## Log
+<details>
+<summary>Alternative installs</summary>
 
-Activity is written to `~/.claude/hooks/model-router-hook.log`:
+### Claude plugin manager
 
+```bash
+claude plugin marketplace add tzachbon/claude-model-router-hook
+claude plugin install claude-model-router-hook@claude-model-router-hook
 ```
-[2026-03-07 12:00:00] action=AUTOSWITCH->opus model=sonnet effort=medium klass=architecture target_effort=high prompt="evaluate the tradeoffs betwee..."
-[2026-03-07 12:01:00] action=SUGGEST->sonnet model=haiku effort=none klass=implementation target_effort=medium prompt="build the settings panel comp..."
-[2026-03-07 12:02:00] action=OVERRIDE prompt="~ keep opus for this one"
+
+### Manual
+
+```bash
+git clone https://github.com/tzachbon/claude-model-router-hook.git
+cd claude-model-router-hook
+./plugins/claude-model-router-hook/install.sh
 ```
 
-`action=` comes first, followed by any `model` / `effort` / `klass` / `target_effort` fields, then the truncated prompt snippet. `AUTOSWITCH->` lines record a settings write (autoswitch mode); `SUGGEST->` lines record a warn-mode advisory; `OVERRIDE` marks a bypassed prompt. A prompt that already matches its tier exits silently and writes no line.
+The manual installer prints the `settings.json` entries that you need to add.
 
+</details>
 
-## Known limitations
+## Notes
 
-- Multi-hook `updatedInput` merge order (A-3): when more than one `PreToolUse` hook returns an `updatedInput` for the same tool call, the order in which Claude Code merges them is undocumented platform behavior. The router writes its rewrite defensively, but a competing hook that also rewrites the spawn can win depending on merge order.
+- Activity is logged at `~/.claude/hooks/model-router-hook.log`.
+- If another `PreToolUse` hook rewrites the same spawn, Claude Code's undocumented merge order decides which rewrite wins.
 
-## Credits
+## Project
 
-Based on [model-matchmaker](https://github.com/coyvalyss1/model-matchmaker) by [@coyvalyss1](https://github.com/coyvalyss1).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+[Contributing](CONTRIBUTING.md) | [MIT license](LICENSE) | Based on [model-matchmaker](https://github.com/coyvalyss1/model-matchmaker) by [@coyvalyss1](https://github.com/coyvalyss1)
