@@ -247,6 +247,6 @@ assert_contains "$CASE_OUTPUT" "Claude global install failed."
 assert_contains "$GH_LOG" "api --hostname github.com --method PUT /user/starred/tzachbon/claude-model-router-hook"
 echo "PASS: GitHub star still runs after install failure"
 
-README_COMMAND="bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh)\""
+README_COMMAND="installer=\"\$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/361031c9381fd6d2b5c47b311b7037015b3c2f6d/install.sh)\" && bash -c \"\$installer\""
 assert_contains "$REPO_ROOT/README.md" "$README_COMMAND"
 echo "PASS: README command preserves wizard input"

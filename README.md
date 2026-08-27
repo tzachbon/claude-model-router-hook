@@ -13,7 +13,7 @@
 ## Install
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/main/install.sh)"
+installer="$(curl -fsSL https://raw.githubusercontent.com/tzachbon/claude-model-router-hook/361031c9381fd6d2b5c47b311b7037015b3c2f6d/install.sh)" && bash -c "$installer"
 ```
 
 The wizard asks whether to install globally and star the GitHub repository. Both prompts default to yes. Installation requires Claude Code and Python 3; starring requires an authenticated `gh` command. Restart Claude Code after installation.
