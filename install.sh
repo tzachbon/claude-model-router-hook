@@ -53,7 +53,10 @@ ask_yes() {
 
     while true; do
         printf '%s' "$prompt"
-        IFS= read -r answer || answer=""
+        if ! IFS= read -r answer; then
+            printf '\nInput closed before confirmation.\n' >&2
+            return 1
+        fi
         [ -t 0 ] || printf '\n'
         case "$answer" in
             ""|[Yy]|[Yy][Ee][Ss])
@@ -115,9 +118,9 @@ star_repository() {
 
 print_banner
 
-ask_yes "Install in Claude globally? [Y/n] "
+ask_yes "Install in Claude globally? [Y/n] " || exit 1
 INSTALL_CHOICE="$ASK_RESULT"
-ask_yes "Star on GitHub? [Y/n] "
+ask_yes "Star on GitHub? [Y/n] " || exit 1
 STAR_CHOICE="$ASK_RESULT"
 
 EXIT_STATUS=0

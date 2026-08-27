@@ -196,6 +196,16 @@ assert_empty "$CLAUDE_LOG"
 assert_empty "$GH_LOG"
 echo "PASS: invalid input repeats the same question"
 
+new_case "closed-input"
+make_claude_stub "$CASE_BIN"
+make_gh_stub "$CASE_BIN"
+run_case '' "$CASE_BIN:$NORMAL_PATH_SUFFIX"
+assert_status 1
+assert_contains "$CASE_OUTPUT" "Input closed before confirmation."
+assert_empty "$CLAUDE_LOG"
+assert_empty "$GH_LOG"
+echo "PASS: closed input performs no actions"
+
 new_case "missing-claude"
 run_case $'\nn\n' "$CASE_BIN"
 assert_status 1
