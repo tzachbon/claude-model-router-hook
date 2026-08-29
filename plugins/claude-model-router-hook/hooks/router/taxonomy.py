@@ -1,6 +1,7 @@
 """Scored taxonomy classifier: signals, per-class scoring, margin confidence."""
 
 import collections
+import re
 
 from .config import resolve_list, safe_regex_match
 
@@ -82,6 +83,52 @@ DEFAULT_PATTERNS = {
     "extreme": [r"\brfc\b", r"\bdesign\s+doc\b", r"\bmigration\s+plan\b", r"\bprogram\b"],
 }
 
+# Routing should react to a request to do coding work, not merely to the
+# vocabulary inside a quoted document, error corpus, or a bag of taxonomy
+# words.  These intentionally stay small and structural; detailed task-class
+# selection remains the scored classifier below.
+_TASK_PREFIX_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:"
+    r"(?:can|could|would|will)\s+you\s+|"
+    r"help(?:\s+me)?\s+(?:to\s+)?|"
+    r")?"
+    r"(?:add|analy[sz]e|architect|author|build|bump|change|check|clean|"
+    r"configure|convert|create|debug|delete|deploy|design|diagnos\w*|"
+    r"document|edit|evaluate|explain|fix|format|generat\w*|implement|"
+    r"improv\w*|inspect|integrat\w*|investigate|lint|make|migrat\w*|"
+    r"modify|move|optimiz\w*|plan|propose|redesign|refactor|remove|rename|"
+    r"reorganize|review|run|search|split|test|update|upgrade|write|"
+    r"git\s+(?:commit|push|pull|status|log|diff|add|stash|branch|merge|"
+    r"rebase|checkout)|"
+    r"do\s+(?:a\s+)?(?:bulk\s+|deep\s+dive\s+|mechanical\s+)*"
+    r"(?:rename|pass|deep\s+dive)|"
+    r"(?:long-horizon\s+strategy|epic[-\s]level\s+plan|"
+    r"program[-\s]level\s+(?:migration\s+)?plan))\b",
+    re.IGNORECASE,
+)
+_TASK_QUESTION_RE = re.compile(
+    r"\b(?:why|how)\s+(?:is|are|does|do|did|should|can|would)\b|"
+    r"\b(?:what|which)\s+(?:are|is)\s+(?:the\s+)?"
+    r"(?:trade-?offs?|best|right|recommended|approach|strategy|design)\b|"
+    r"\bshould\s+we\b",
+    re.IGNORECASE,
+)
+_PROBLEM_REPORT_RE = re.compile(
+    r"\b(?:error|exception|traceback|stack trace|crash\w*|hang\w*|"
+    r"flaky|deadlock|race condition|regression|memory leak)\b",
+    re.IGNORECASE,
+)
+_HELP_RE = re.compile(
+    r"\b(?:help\s+(?:me\s+)?(?:figure|diagnose|debug|fix|with)|"
+    r"(?:i|we)\s+(?:need|want|would\s+like)\s+(?:you\s+)?(?:a\s+|to\s+)?)\b",
+    re.IGNORECASE,
+)
+_KEYWORD_BAG_WORDS = frozenset(
+    "architecture condition deadlock debug deploy epic extreme implementation "
+    "mechanical migration platform prod race refactor regression rewrite "
+    "traceback tradeoff".split()
+)
+
 ScoreResult = collections.namedtuple(
     "ScoreResult", ["scores", "top", "second", "margin", "word_count"]
 )
@@ -109,6 +156,34 @@ def _text_score(prompt_lower, keywords, patterns, per_hit=2, cap=TEXT_CAP):
     return min(hits * per_hit, cap)
 
 
+def _looks_like_keyword_bag(prompt_lower):
+    """True for a taxonomy-word list with no task-shaped language."""
+    words = re.findall(r"[a-z]+", prompt_lower)
+    return len(words) >= 5 and all(word in _KEYWORD_BAG_WORDS for word in words)
+
+
+def has_task_intent(prompt):
+    """Whether text is plausibly a coding-assistant request.
+
+    This is deliberately a narrow abstention guard.  It prevents a high score
+    from incidental vocabulary, while error reports and normal imperative or
+    design questions continue to reach the scored taxonomy.
+    """
+    if not isinstance(prompt, str):
+        return False
+    prompt = prompt or ""
+    lower = prompt.lower()
+    if _looks_like_keyword_bag(lower):
+        return False
+    return bool(
+        _TASK_PREFIX_RE.search(prompt)
+        or _TASK_QUESTION_RE.search(prompt)
+        or _PROBLEM_REPORT_RE.search(prompt)
+        or _HELP_RE.search(prompt)
+        or "```" in prompt
+    )
+
+
 def score(prompt, cfg):
     """Score prompt against all classes; returns ScoreResult (deterministic)."""
     thresholds = cfg.get("thresholds", {})
@@ -116,7 +191,7 @@ def score(prompt, cfg):
     long_prompt_words = thresholds.get("long_prompt_words", 200)
     question_words = thresholds.get("question_words", 100)
 
-    prompt = prompt or ""
+    prompt = prompt if isinstance(prompt, str) else ""
     prompt_lower = prompt.lower()
     word_count = len(prompt.split())
 
@@ -130,7 +205,10 @@ def score(prompt, cfg):
     # Structural/length signals (per-class caps).
     if 1 <= word_count <= 12:  # short imperative
         scores["mechanical"] += 1
-    if word_count > mechanical_max_words:  # length requirement, else zeroed
+    # Long prompts can still describe a pure mechanical batch operation.  Only
+    # discard the weak short-imperative prior; retain an explicit mechanical
+    # pattern such as a bulk rename or git command.
+    if word_count > mechanical_max_words and scores["mechanical"] < 2:
         scores["mechanical"] = 0.0
 
     if "```" in prompt:  # code fence
@@ -184,6 +262,8 @@ def classify_heuristic(prompt, cfg):
     result = score(prompt, cfg)
     if result.word_count == 0:  # empty/whitespace prompt
         return None, result
+    if not has_task_intent(prompt):
+        return None, result
 
     confident_margin = cfg.get("thresholds", {}).get("confident_margin", 3)
     top_score = result.scores[result.top]
@@ -203,6 +283,8 @@ def classify(prompt, cfg, data_dir):
     """
     klass, result = classify_heuristic(prompt, cfg)
     if result.word_count == 0:  # empty/whitespace prompt: abstain, no CLI
+        return None, result
+    if not has_task_intent(prompt):
         return None, result
 
     confident_margin = cfg.get("thresholds", {}).get("confident_margin", 3)

@@ -25,11 +25,12 @@ Restart Claude Code after either path to activate the hooks.
 
 ## What gets registered
 
-`hooks.json` wires three Python entrypoints:
+`hooks.json` wires four Python entrypoints:
 
 - `session_init.py` (`SessionStart`) injects the task-class rules below into every session.
 - `user_prompt_submit.py` (`UserPromptSubmit`) classifies each prompt and warns or autoswitches.
 - `pre_tool_use.py` (`PreToolUse` on `Agent`/`Task`) routes sub-agent spawns to the matching tier.
+- `post_tool_use.py` (`PostToolUse` on `Agent`/`Task`) records the model Claude Code actually used.
 
 ## Configure
 
@@ -50,16 +51,16 @@ These rules apply to YOU and to every sub-agent you spawn.
 | Class | Target model | Effort | When to use |
 |---|---|---|---|
 | mechanical | haiku | none | Git ops, renames, formatting, lint, file moves, version bumps, quick lookups, short imperative tasks. |
-| implementation | sonnet | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
-| debugging | sonnet | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
-| architecture | opus | high | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
-| extreme | fable | high | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
+| implementation | opus | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
+| debugging | opus | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
+| architecture | opus | xhigh | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
+| extreme | opus | max | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
 | abstain | (no routing) | - | Prompt does not clearly match any class; current model and effort pass through unmodified. |
 
 ### Sub-agent model selection (MANDATORY)
 
 When calling the Agent tool, set the model parameter to match the task class
-above. Never default all sub-agents to opus. Match the model to the work:
-mechanical work goes to haiku, standard coding to sonnet, deep analysis to
-opus, and only platform-scale efforts to fable.
+above. Do not default every sub-agent to the highest effort. Match the model
+and effort to the work: mechanical work goes to haiku, implementation to opus,
+debugging to opus, deep analysis to opus, and platform-scale work to opus.
 <!-- advisory:end -->

@@ -19,7 +19,7 @@ info: |
 </div>
 
 <!--
-Welcome! I'm going to walk you through a hook I built for Claude Code that routes across Haiku, Sonnet, Opus, and Fable based on what you're asking it to do. Classification is heuristics-first with an optional headless Claude CLI fallback, so no API key is needed. By default it warns; autoswitch is opt-in.
+Welcome! I'm going to walk you through a hook I built for Claude Code that keeps truly mechanical work on Haiku and defaults agentic coding to Opus at the effort level the task needs. Sonnet and Fable remain configurable alternatives. Classification is heuristics-first with an optional headless Claude CLI fallback, so no API key is needed. By default it warns; autoswitch is opt-in.
 -->
 
 ---
@@ -64,7 +64,7 @@ layout: center
 </div>
 
 <!--
-Three hooks. SessionStart fires once and injects tier rules so sub-agents know which model to pick. UserPromptSubmit fires on every prompt: it classifies what you're asking, checks the current model, and warns if there's a mismatch. PreToolUse fires when a sub-agent is spawned and enforces the tier on it. Warn is the default; autoswitch is opt-in and only affects new sessions. Classification is heuristics-first with an optional headless Claude CLI fallback that you can disable; no API key is used.
+Four hooks. SessionStart fires once and injects tier rules so sub-agents know which model to pick. UserPromptSubmit fires on every prompt: it classifies what you're asking, checks the current model, and warns if there's a mismatch. PreToolUse fires when a sub-agent is spawned and enforces the tier on it. PostToolUse records the model that actually completed the delegated work. Warn is the default; autoswitch is opt-in and only affects new sessions. Classification is heuristics-first with an optional headless Claude CLI fallback that you can disable; no API key is used.
 -->
 
 ---
@@ -80,24 +80,24 @@ layout: center
 <p class="opacity-40 text-xs mt-2">short mechanical prompts</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
-<h3 class="text-amber-400 text-base font-semibold mb-2">Sonnet</h3>
+<h3 class="text-amber-400 text-base font-semibold mb-2">Opus · medium</h3>
 <p class="opacity-60 text-xs leading-relaxed"><code>build</code> · <code>implement</code> · <code>fix</code> · <code>debug</code> · <code>add feature</code> · <code>test</code> · <code>refactor</code> · <code>api</code></p>
 <p class="opacity-40 text-xs mt-2">default for feature work</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
-<h3 class="text-purple-400 text-base font-semibold mb-2">Opus</h3>
+<h3 class="text-purple-400 text-base font-semibold mb-2">Opus · high/xhigh</h3>
 <p class="opacity-60 text-xs leading-relaxed"><code>architect</code> · <code>deep dive</code> · <code>multi-system</code> · <code>complex refactor</code> · <code>plan mode</code> · <code>analyze</code> · <code>strategy</code></p>
 <p class="opacity-40 text-xs mt-2">longer, higher-stakes prompts</p>
 </div>
 <div v-click class="bg-white/5 border border-white/10 rounded-2xl p-4">
-<h3 class="text-rose-400 text-base font-semibold mb-2">Fable</h3>
-<p class="opacity-60 text-xs leading-relaxed">top of the ladder for the most demanding work; autoswitch is gated behind <code>allow_fable_autoswitch</code></p>
-<p class="opacity-40 text-xs mt-2">opt-in top tier</p>
+<h3 class="text-rose-400 text-base font-semibold mb-2">Opus · max</h3>
+<p class="opacity-60 text-xs leading-relaxed">program-scale migration, RFC, and long-horizon work; <code>max</code> is session-only</p>
+<p class="opacity-40 text-xs mt-2">Fable remains opt-in by config</p>
 </div>
 </div>
 
 <p v-click class="text-center mt-6 opacity-70 text-sm">
-<span class="text-cyan-400 font-semibold">Four-tier ladder with effort levels</span>: Haiku → Sonnet → Opus → Fable, each with an effort floor
+<span class="text-cyan-400 font-semibold">Quality-first defaults with effort levels</span>: Haiku for mechanical work, Opus from medium through max for agentic work
 </p>
 
 <p v-click class="text-center mt-3 opacity-60 text-sm">
@@ -105,7 +105,7 @@ layout: center
 </p>
 
 <!--
-A four-tier ladder: Haiku, Sonnet, Opus, Fable, each with an effort floor. Classification is heuristics-first with keyword and regex matching, plus an optional headless Claude CLI fallback you can disable. Haiku triggers on short, mechanical prompts matching git/rename/format patterns. Sonnet is the middle ground for feature work. Opus handles architecture and higher-stakes work. Fable sits at the top for the most demanding work, and autoswitching to it is gated behind allow_fable_autoswitch.
+Quality-first defaults: Haiku handles short mechanical prompts matching git/rename/format patterns. Opus handles feature work at medium effort, debugging at high, architecture at xhigh, and program-scale work at max. Classification is heuristics-first with keyword and regex matching, plus an optional headless Claude CLI fallback you can disable. Fable remains available as an explicit configuration target and its autoswitch is gated behind allow_fable_autoswitch.
 -->
 
 ---

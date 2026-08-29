@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented here.
 
+## [2.1.0] - 2026-08-28
+
+### Added
+- `PostToolUse` telemetry for `Agent` and `Task`: the router now records the requested route alongside Claude Code's resolved model, fallback chain, duration, and token count.
+- Project-local routed variants are recognized from ancestor `.claude/agents` directories, matching host agent resolution.
+
+### Changed
+- Default routing is now quality-first for agentic coding: mechanical tasks stay on Haiku, while implementation, debugging, architecture, and extreme work use Opus at `medium`, `high`, `xhigh`, and `max` effort respectively.
+- Nested sub-agent work is always capability-gated to at least the configured implementation target. Generated Haiku agents cannot recursively delegate; other generated agents carry narrow-scope delegation guidance.
+- The evaluator now validates every labeled default `(model, effort)` route, not just class accuracy.
+
+### Fixed
+- Keyword-stuffed and incidental taxonomy language abstain instead of triggering a route, while long explicit mechanical batch requests retain their mechanical classification.
+- Model detection now matches model-family tokens rather than arbitrary substrings.
+
+### Notes
+- `max` effort is session-only, so autoswitch warns instead of silently persisting `xhigh`. Fable remains available through an explicit configuration target and still requires opt-in for autoswitching.
+
 ## [2.0.0] - 2026-07-20
 
 Full rewrite of the router from bash wrappers into a Python `router` package with three hook entrypoints. The old `model_router.py` and shell wrappers are removed.

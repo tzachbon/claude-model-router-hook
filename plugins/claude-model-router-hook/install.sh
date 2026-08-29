@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Manual (non-plugin) installer for claude-model-router-hook.
 # When installed as a Claude Code plugin, hooks/hooks.json auto-registers the
-# three python entrypoints and no manual step is needed. This script mirrors
+# four Python entrypoints and no manual step is needed. This script mirrors
 # that setup for a manual clone-and-install into ~/.claude.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +26,7 @@ cp -R "$SCRIPT_DIR/hooks/router" "$HOOKS_DIR/router"
 cp "$SCRIPT_DIR/hooks/session_init.py"       "$HOOKS_DIR/session_init.py"
 cp "$SCRIPT_DIR/hooks/user_prompt_submit.py" "$HOOKS_DIR/user_prompt_submit.py"
 cp "$SCRIPT_DIR/hooks/pre_tool_use.py"       "$HOOKS_DIR/pre_tool_use.py"
+cp "$SCRIPT_DIR/hooks/post_tool_use.py"      "$HOOKS_DIR/post_tool_use.py"
 
 # Routed agent variants, generated from the resolved config so only tiers the
 # config actually targets get an agent file. A failure here aborts the install
@@ -45,6 +46,7 @@ echo "  hooks/router/                     -> $HOOKS_DIR/router/"
 echo "  hooks/session_init.py             -> $HOOKS_DIR/session_init.py"
 echo "  hooks/user_prompt_submit.py       -> $HOOKS_DIR/user_prompt_submit.py"
 echo "  hooks/pre_tool_use.py             -> $HOOKS_DIR/pre_tool_use.py"
+echo "  hooks/post_tool_use.py            -> $HOOKS_DIR/post_tool_use.py"
 echo "  agents/routed-*.md                -> $AGENTS_DIR/"
 echo "  schema/model-router.schema.json   -> $SCHEMA_DIR/"
 echo ""
@@ -58,6 +60,9 @@ echo "  { \"type\": \"command\", \"command\": \"python3 \\\"$HOOKS_DIR/user_prom
 echo ""
 echo "Under 'PreToolUse' (matcher \"Agent|Task\"):"
 echo "  { \"matcher\": \"Agent|Task\", \"hooks\": [ { \"type\": \"command\", \"command\": \"python3 \\\"$HOOKS_DIR/pre_tool_use.py\\\"\", \"timeout\": 10 } ] }"
+echo ""
+echo "Under 'PostToolUse' (matcher \"Agent|Task\"):"
+echo "  { \"matcher\": \"Agent|Task\", \"hooks\": [ { \"type\": \"command\", \"command\": \"python3 \\\"$HOOKS_DIR/post_tool_use.py\\\"\", \"timeout\": 5 } ] }"
 echo ""
 echo "Routed subagent variants installed to $AGENTS_DIR, one per configured class target (listed above)."
 echo ""

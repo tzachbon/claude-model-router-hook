@@ -59,18 +59,18 @@ These rules apply to YOU and to every sub-agent you spawn.
 | Class | Target model | Effort | When to use |
 |---|---|---|---|
 | mechanical | haiku | none | Git ops, renames, formatting, lint, file moves, version bumps, quick lookups, short imperative tasks. |
-| implementation | sonnet | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
-| debugging | sonnet | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
-| architecture | opus | high | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
-| extreme | fable | high | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
+| implementation | opus | medium | Writing or editing code, building features, creating components or APIs, writing tests, standard feature work. |
+| debugging | opus | high | Diagnosing failures, flaky tests, races, regressions, stack traces, bisecting, reproducing bugs. |
+| architecture | opus | xhigh | Architecture decisions, tradeoff analysis, redesigns, deep multi-file analysis, sustained reasoning over large context. |
+| extreme | opus | max | Multi-system migrations, codebase-wide rewrites, long-horizon plans, RFCs and design docs, platform-scale work. |
 | abstain | (no routing) | - | Prompt does not clearly match any class; current model and effort pass through unmodified. |
 
 ### Sub-agent model selection (MANDATORY)
 
 When calling the Agent tool, set the model parameter to match the task class
-above. Never default all sub-agents to opus. Match the model to the work:
-mechanical work goes to haiku, standard coding to sonnet, deep analysis to
-opus, and only platform-scale efforts to fable.
+above. Do not default every sub-agent to the highest effort. Match the model
+and effort to the work: mechanical work goes to haiku, implementation to opus,
+debugging to opus, deep analysis to opus, and platform-scale work to opus.
 """
 
 TRIGGERS = (
@@ -154,7 +154,6 @@ class TestAdvisoryRendersFromConfig(unittest.TestCase):
     def test_defaults_rendering_is_pinned_to_bytes(self):
         """The committed-doc form, spelled out rather than round-tripped."""
         self.assertEqual(ADVISORY_MD, EXPECTED_ADVISORY_MD)
-        self.assertEqual(len(ADVISORY_MD), 1334)
 
     def test_explicit_defaults_config_renders_the_same(self):
         self.assertEqual(render_advisory(copy.deepcopy(DEFAULTS)), EXPECTED_ADVISORY_MD)
@@ -167,12 +166,12 @@ class TestAdvisoryRendersFromConfig(unittest.TestCase):
 
     def test_closing_prose_names_the_configured_model(self):
         rendered = render_advisory(_sonnet_free_cfg())
-        self.assertIn("standard coding to opus", rendered)
-        self.assertNotIn("standard coding to sonnet", rendered)
+        self.assertIn("implementation to opus", rendered)
+        self.assertNotIn("implementation to sonnet", rendered)
 
     def test_session_context_is_sonnet_free_on_every_tier(self):
         cfg = _sonnet_free_cfg()
-        for current in ("claude-haiku-4-5", "claude-sonnet-5", "claude-opus-4-8",
+        for current in ("claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5",
                         "claude-fable-5", "", None, "some-unknown-model"):
             context = render_session_context(current, cfg)
             # "You are currently on sonnet" states a fact about the session,
@@ -225,9 +224,9 @@ class TestAdvisoryMatchesEnforcement(unittest.TestCase):
         cfg["classes"]["implementation"]["target"] = {"model": "gpt-9", "effort": "medium"}
         rendered = render_advisory(cfg)
         self.assertIn("| implementation | (no routing) | - |", rendered)
-        self.assertNotIn("| implementation | sonnet | medium |", rendered)
+        self.assertNotIn("| implementation | opus | medium |", rendered)
         # The prose must not name a model for it either.
-        self.assertNotIn("standard coding to", rendered)
+        self.assertNotIn("implementation to", rendered)
         self.assertIn("mechanical work goes to haiku", rendered)
 
     def test_classes_null_advertises_nothing_routable(self):
@@ -242,7 +241,7 @@ class TestAdvisoryMatchesEnforcement(unittest.TestCase):
         cfg = copy.deepcopy(DEFAULTS)
         cfg["classes"]["architecture"]["target"] = {"model": "gpt-9"}
         rendered = render_advisory(cfg)
-        self.assertIn("Never default all sub-agents to fable", rendered)
+        self.assertIn("Do not default every sub-agent to the highest effort", rendered)
         self.assertNotIn("deep analysis to", rendered)
 
     def test_non_dict_config_renders_the_shipped_defaults(self):
@@ -257,12 +256,12 @@ class TestAdvisoryMatchesEnforcement(unittest.TestCase):
     def test_tier_hint_drops_clauses_for_unroutable_classes(self):
         cfg = copy.deepcopy(DEFAULTS)
         cfg["classes"]["implementation"]["target"] = {"model": "gpt-9"}
-        context = render_session_context("claude-opus-4-8", cfg)
+        context = render_session_context("claude-opus-5", cfg)
         self.assertIn("For mechanical tasks haiku is cheaper.", context)
         self.assertNotIn("standard implementation", context)
 
     def test_tier_hint_survives_every_class_being_unroutable(self):
-        context = render_session_context("claude-opus-4-8", {"classes": None})
+        context = render_session_context("claude-opus-5", {"classes": None})
         self.assertIn("You are currently on opus.", context)
 
 
@@ -285,7 +284,8 @@ class TestSessionInitUsesConfig(unittest.TestCase):
             }, agents=[("routed-haiku", "haiku", None, ("mechanical",)),
                        ("routed-opus-medium", "opus", "medium", ("implementation",)),
                        ("routed-opus-high", "opus", "high", ("debugging",)),
-                       ("routed-fable-high", "fable", "high", ("extreme",))])
+                       ("routed-opus-xhigh", "opus", "xhigh", ("architecture",)),
+                       ("routed-opus-max", "opus", "max", ("extreme",))])
             context = self._context(home)
             self.assertNotIn("sonnet", context)
             self.assertIn("| implementation | opus | medium |", context)
@@ -298,7 +298,7 @@ class TestSessionInitUsesConfig(unittest.TestCase):
                 for name, model, effort, classes
                 in variants.target_variants(copy.deepcopy(DEFAULTS))
             ])
-            self.assertIn("| implementation | sonnet | medium |", self._context(home))
+            self.assertIn("| implementation | opus | medium |", self._context(home))
 
     def test_unreadable_config_still_emits_advisory(self):
         with tempfile.TemporaryDirectory() as home:
@@ -357,10 +357,10 @@ class TestVariantMap(unittest.TestCase):
             variants.variant_map(copy.deepcopy(DEFAULTS)),
             {
                 ("haiku", None): "routed-haiku",
-                ("sonnet", "medium"): "routed-sonnet-medium",
-                ("sonnet", "high"): "routed-sonnet-high",
+                ("opus", "medium"): "routed-opus-medium",
                 ("opus", "high"): "routed-opus-high",
-                ("fable", "high"): "routed-fable-high",
+                ("opus", "xhigh"): "routed-opus-xhigh",
+                ("opus", "max"): "routed-opus-max",
             },
         )
 
@@ -385,7 +385,7 @@ class TestVariantMap(unittest.TestCase):
         cfg = copy.deepcopy(DEFAULTS)
         cfg["classes"]["extreme"]["target"] = {"model": "gpt-9"}
         mapping = variants.variant_map(cfg)
-        self.assertNotIn(("fable", "high"), mapping)
+        self.assertNotIn(("opus", "max"), mapping)
         self.assertIn(("haiku", None), mapping)
 
     def test_malformed_config_yields_empty_map_without_raising(self):
@@ -471,6 +471,8 @@ class TestAgentMarkdown(unittest.TestCase):
         md = variants.agent_markdown("routed-haiku", "haiku", None, ("mechanical",))
         self.assertNotIn("effort:", md)
         self.assertIn("model: haiku", md)
+        self.assertIn("disallowedTools: Agent", md)
+        self.assertIn("do not delegate it", md)
 
     def test_names_every_declaring_class(self):
         md = variants.agent_markdown(
@@ -585,8 +587,9 @@ class TestVariantGenerator(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             self.assertEqual(
                 sorted(os.listdir(agents)),
-                ["routed-fable-high.md", "routed-haiku.md",
-                 "routed-opus-high.md", "routed-opus-medium.md"],
+                ["routed-haiku.md", "routed-opus-high.md",
+                 "routed-opus-max.md", "routed-opus-medium.md",
+                 "routed-opus-xhigh.md"],
             )
             self.assertFalse(os.path.exists(stale))
 
@@ -630,19 +633,19 @@ class TestVariantGenerator(unittest.TestCase):
     def test_prune_removes_a_pre_key_generated_file(self):
         """Upgrade path: a stale variant from before the key is still pruned."""
         with tempfile.TemporaryDirectory() as agents:
-            legacy = os.path.join(agents, "routed-opus-xhigh.md")
+            legacy = os.path.join(agents, "routed-fable-high.md")
             with open(legacy, "w") as fh:
                 fh.write(
-                    "---\nname: routed-opus-xhigh\n"
-                    "description: Router-managed variant for architecture tasks. "
+                    "---\nname: routed-fable-high\n"
+                    "description: Router-managed variant for extreme tasks. "
                     "Spawned by the model router hook; do not invoke directly.\n"
-                    "model: opus\neffort: xhigh\n---\n\n"
+                    "model: fable\neffort: high\n---\n\n"
                     "Complete the delegated task exactly as prompted; "
                     "return a concise report.\n"
                 )
             proc = self._run("--agents-dir", agents)
             self.assertEqual(proc.returncode, 0, proc.stdout)
-            self.assertIn("REMOVED: routed-opus-xhigh.md", proc.stdout)
+            self.assertIn("REMOVED: routed-fable-high.md", proc.stdout)
             self.assertFalse(os.path.exists(legacy))
 
     def test_remove_failure_exits_non_zero(self):
@@ -652,10 +655,10 @@ class TestVariantGenerator(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agents = os.path.join(tmp, "agents")
             os.makedirs(agents)
-            stale = os.path.join(agents, "routed-opus-xhigh.md")
+            stale = os.path.join(agents, "routed-fable-high.md")
             with open(stale, "w") as fh:
                 fh.write(variants.agent_markdown(
-                    "routed-opus-xhigh", "opus", "xhigh", ("architecture",)))
+                    "routed-fable-high", "fable", "high", ("extreme",)))
             for name, model, effort, classes in variants.target_variants(
                 copy.deepcopy(DEFAULTS)
             ):
@@ -708,11 +711,16 @@ class TestInstallScript(unittest.TestCase):
                 capture_output=True, text=True, env=env,
             )
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertTrue(os.path.isfile(
+                os.path.join(home, ".claude", "hooks", "post_tool_use.py")
+            ))
+            self.assertIn("Under 'PostToolUse'", proc.stdout)
             installed = sorted(os.listdir(os.path.join(home, ".claude", "agents")))
             self.assertEqual(
                 installed,
-                ["routed-fable-high.md", "routed-haiku.md",
-                 "routed-opus-high.md", "routed-opus-medium.md"],
+                ["routed-haiku.md", "routed-opus-high.md",
+                 "routed-opus-max.md", "routed-opus-medium.md",
+                 "routed-opus-xhigh.md"],
             )
 
     def test_generator_conflict_aborts_the_install(self):
@@ -768,12 +776,16 @@ class TestPreToolUseVariantSelection(unittest.TestCase):
     MECH = "rename the file src/a.py to src/b.py"
     IMPL = "implement a new React component and write tests for it"
 
-    def _spawn(self, home, prompt):
-        payload = json.dumps({
+    def _spawn(self, home, prompt, cwd=None, agent_id=None):
+        payload = {
             "tool_name": "Agent",
             "tool_input": {"subagent_type": "general-purpose", "prompt": prompt},
-        })
-        code, stdout = _run_hook("pre_tool_use.py", payload, home)
+        }
+        if cwd is not None:
+            payload["cwd"] = cwd
+        if agent_id is not None:
+            payload["agent_id"] = agent_id
+        code, stdout = _run_hook("pre_tool_use.py", json.dumps(payload), home)
         self.assertEqual(code, 0)
         if not stdout.strip():
             return {}, ""
@@ -803,6 +815,30 @@ class TestPreToolUseVariantSelection(unittest.TestCase):
             self.assertEqual(updated.get("model"), "opus")
             self.assertEqual(updated.get("subagent_type"), "routed-opus-medium")
 
+    def test_project_scoped_variant_is_selected_from_event_cwd(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as project:
+            _write_home(home, {"version": 2, "classifier": {"cli_fallback": False}})
+            agents = os.path.join(project, ".claude", "agents")
+            os.makedirs(agents)
+            with open(os.path.join(agents, "routed-opus-medium.md"), "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-opus-medium", "opus", "medium", ("implementation",)
+                ))
+            updated, _msg = self._spawn(home, self.IMPL, cwd=project)
+            self.assertEqual(updated.get("model"), "opus")
+            self.assertEqual(updated.get("subagent_type"), "routed-opus-medium")
+
+    def test_nested_mechanical_spawn_is_gated_to_opus(self):
+        with tempfile.TemporaryDirectory() as home:
+            _write_home(
+                home,
+                {"version": 2, "classifier": {"cli_fallback": False}},
+                agents=list(variants.target_variants(copy.deepcopy(DEFAULTS))),
+            )
+            updated, _msg = self._spawn(home, self.MECH, agent_id="agent-parent")
+            self.assertEqual(updated.get("model"), "opus")
+            self.assertEqual(updated.get("subagent_type"), "routed-opus-medium")
+
     def test_declared_but_uninstalled_variant_degrades_and_says_so(self):
         """F7: never name a subagent_type with no agent file behind it."""
         with tempfile.TemporaryDirectory() as home:
@@ -825,7 +861,7 @@ class TestPreToolUseVariantSelection(unittest.TestCase):
 class TestMinGatedTarget(unittest.TestCase):
 
     def test_defaults_are_the_shipped_implementation_target(self):
-        self.assertEqual(min_gated_target(copy.deepcopy(DEFAULTS)), ("sonnet", "medium"))
+        self.assertEqual(min_gated_target(copy.deepcopy(DEFAULTS)), ("opus", "medium"))
 
     def test_follows_configured_implementation_target(self):
         self.assertEqual(min_gated_target(_sonnet_free_cfg()), ("opus", "medium"))
@@ -833,7 +869,7 @@ class TestMinGatedTarget(unittest.TestCase):
     def test_haiku_implementation_walks_to_the_cheapest_other_tier(self):
         """Escalation must survive a bottom-tier implementation target."""
         cfg = _cfg(implementation={"model": "haiku"})
-        self.assertEqual(min_gated_target(cfg), ("sonnet", "high"))  # debugging
+        self.assertEqual(min_gated_target(cfg), ("opus", "high"))  # debugging
 
     def test_walk_prefers_the_lowest_tier_available(self):
         cfg = _cfg(
@@ -852,10 +888,10 @@ class TestMinGatedTarget(unittest.TestCase):
         self.assertIsNone(min_gated_target(cfg))
 
     def test_unusable_implementation_walks_within_the_config(self):
-        """It must not reach for the shipped default, which targets sonnet."""
+        """It must not reach for a target the config rejects."""
         self.assertEqual(
             min_gated_target(_cfg(implementation={"model": "gpt-9"})),
-            ("sonnet", "high"),  # debugging, the cheapest non-haiku DEFAULTS target
+            ("opus", "high"),  # debugging, the cheapest non-haiku DEFAULTS target
         )
 
     def test_unusable_implementation_in_a_sonnet_free_config_stays_sonnet_free(self):
@@ -897,7 +933,7 @@ class TestGatedBumpFollowsConfig(unittest.TestCase):
         """The guard protects the invariant; it must not drop the guarantee."""
         cfg = _cfg(implementation={"model": "haiku"})
         gated = self._gate(cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
         self.assertIsNotNone(gated.effort)
 
     def test_haiku_debugging_floor_still_applies(self):

@@ -1,8 +1,8 @@
 ---
-name: routed-opus-high
-description: Router-managed variant for debugging tasks. Spawned by the model router hook; do not invoke directly.
+name: routed-opus-max
+description: Router-managed variant for extreme tasks. Spawned by the model router hook; do not invoke directly.
 model: opus
-effort: high
+effort: max
 router-generated: true
 ---
 

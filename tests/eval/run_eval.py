@@ -29,20 +29,14 @@ from router import policy, taxonomy  # noqa: E402
 from router.config import DEFAULTS  # noqa: E402
 from router.ladder import MODEL_IDS, TIERS  # noqa: E402
 
-# Collapse gates, finalized against the 70-row baseline (task 4.3 tuning +
-# task 4.4.1 confounder-guard rows): 95.71% accuracy (67/70). The set is roughly
-# class-balanced (10 rows/class plus 10 adversarial confounder rows), so tier
-# shares reflect class balance, not production traffic: with all 10 extreme rows
-# routed correctly, fable is ~17.5% of the 57 non-abstain decisions and opus+fable
-# ~37% (architecture + extreme = 2 of 6 classes, diluted by the cheap confounder
-# rows). The original 0.10 / 0.40 ceilings were pre-baseline guesses below those
-# structural floors and are unreachable on a balanced set. Finalized values sit
-# just above the measured floors: they still catch a real regression (architecture
-# leaking into extreme, routine prompts over-routing to opus/fable) without failing
-# on the set's built-in class balance. Do not tighten blindly.
-ACCURACY_MIN = 0.90       # min overall classification accuracy (baseline 0.957)
-FABLE_SHARE_MAX = 0.22    # fable share of non-abstain decisions (baseline 0.175)
-TOP_SHARE_MAX = 0.42      # opus + fable share of non-abstain decisions (baseline 0.368)
+# The default policy is intentionally quality-first for agentic coding: all
+# non-mechanical classes route to Opus at graduated effort levels, while Fable
+# remains an explicit opt-in configuration target.  Every labeled routable row
+# carries its expected `(model, effort)` pair, so route accuracy is a stronger
+# regression signal than a broad model-share ceiling.
+ACCURACY_MIN = 0.95       # min overall classification accuracy (baseline 1.0)
+ROUTE_ACCURACY_MIN = 1.0  # every labeled default route must retain its target
+FABLE_SHARE_MAX = 0.0     # Fable is never a shipped default route
 P95_MAX_MS = 200.0        # heuristic classify p95 wall time (NFR-1)
 
 CLASS_ORDER = (
@@ -85,6 +79,9 @@ def run():
     mythos_emissions = 0
     non_abstain = 0
     correct = 0
+    route_total = 0
+    route_correct = 0
+    route_mismatches = []
 
     for row in rows:
         prompt = row.get("prompt", "")
@@ -101,6 +98,7 @@ def run():
             per_class_correct[expected] += 1
             correct += 1
 
+        decision = None
         if predicted is not None:
             decision = policy.apply_gates(
                 prompt, policy.target_for_class(predicted, cfg), cfg
@@ -110,14 +108,25 @@ def run():
             model_counts[decision.model] += 1
             non_abstain += 1
 
+        expected_route = row.get("expected")
+        if isinstance(expected_route, dict):
+            route_total += 1
+            actual = (
+                {"model": decision.model, "effort": decision.effort}
+                if decision is not None else None
+            )
+            if actual is not None and all(
+                actual.get(key) == value for key, value in expected_route.items()
+            ):
+                route_correct += 1
+            else:
+                route_mismatches.append((row.get("id", "?"), expected_route, actual))
+
     total = len(rows)
     accuracy = correct / total if total else 0.0
+    route_accuracy = route_correct / route_total if route_total else 1.0
     p95_ms = percentile(times_ms, 0.95)
     fable_share = model_counts["fable"] / non_abstain if non_abstain else 0.0
-    top_share = (
-        (model_counts["opus"] + model_counts["fable"]) / non_abstain
-        if non_abstain else 0.0
-    )
 
     # ---- Report ----
     print("=== Router eval ({} rows, cli_fallback=false) ===".format(total))
@@ -131,6 +140,8 @@ def run():
         print("  {:<14} {:>3}/{:<3}  {:.2%}".format(
             cls, per_class_correct.get(cls, 0), n, acc))
     print("  {:<14} {:>3}/{:<3}  {:.2%}".format("OVERALL", correct, total, accuracy))
+    print("  {:<14} {:>3}/{:<3}  {:.2%}".format(
+        "ROUTE", route_correct, route_total, route_accuracy))
     print()
 
     print("Confusion matrix (row = expected, col = predicted):")
@@ -168,14 +179,16 @@ def run():
     if accuracy < ACCURACY_MIN:
         failures.append(
             "accuracy {:.2%} < ACCURACY_MIN {:.2%}".format(accuracy, ACCURACY_MIN))
+    if route_accuracy < ROUTE_ACCURACY_MIN:
+        failures.append(
+            "route accuracy {:.2%} < ROUTE_ACCURACY_MIN {:.2%}: {}".format(
+                route_accuracy, ROUTE_ACCURACY_MIN, route_mismatches
+            )
+        )
     if fable_share > FABLE_SHARE_MAX:
         failures.append(
             "fable share {:.2%} > FABLE_SHARE_MAX {:.2%}".format(
                 fable_share, FABLE_SHARE_MAX))
-    if top_share > TOP_SHARE_MAX:
-        failures.append(
-            "opus+fable share {:.2%} > TOP_SHARE_MAX {:.2%}".format(
-                top_share, TOP_SHARE_MAX))
     if p95_ms >= P95_MAX_MS:
         failures.append(
             "p95 {:.2f}ms >= P95_MAX_MS {:.0f}ms".format(p95_ms, P95_MAX_MS))
