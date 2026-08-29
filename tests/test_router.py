@@ -1070,6 +1070,14 @@ class TestCliFallback(unittest.TestCase):
             self.assertEqual(classify_cli("design a system", self.cfg, None), "architecture")
         self.assertEqual(run.call_count, 1)
 
+    def test_reply_with_trailing_punctuation_is_parsed(self):
+        # The prompt asks for "ONLY the class word" but haiku sometimes answers
+        # in sentence style ("Extreme.") instead of the bare token; a real
+        # classification must not be discarded over a trailing period.
+        with mock.patch.object(cli_fallback.subprocess, "run",
+                               return_value=self._completed(0, "Extreme.\n")):
+            self.assertEqual(classify_cli("convert a huge repo from typescript to php", self.cfg, None), "extreme")
+
     def test_abstain_reply_parsed(self):
         with mock.patch.object(cli_fallback.subprocess, "run",
                                return_value=self._completed(0, "abstain")):
