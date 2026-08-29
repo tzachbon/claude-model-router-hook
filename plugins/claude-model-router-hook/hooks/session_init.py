@@ -17,29 +17,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from router import advisory, config, hookio, variants  # noqa: E402
 
 
-def _load_config():
+def _load_config(cwd=None):
     """Resolved config, or None when it cannot be read.
 
     A config failure must not cost the session its advisory text, so the
     caller renders the DEFAULTS table instead of emitting nothing.
     """
     try:
-        return config.load_config(global_path=config.global_config_path())
+        return config.load_config(global_path=config.global_config_path(), cwd=cwd)
     except Exception:
         return None
 
 
-def _agent_dirs():
+def _agent_dirs(cwd=None):
     """Directories a routed variant can resolve from (plugin, then user)."""
     dirs = []
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if plugin_root:
         dirs.append(os.path.join(plugin_root, "agents"))
+    dirs.extend(variants.project_agent_dirs(cwd))
     dirs.append(str(Path.home() / ".claude" / "agents"))
     return dirs
 
 
-def _missing_variants(cfg):
+def _missing_variants(cfg, cwd=None):
     """Declared variants with no agent file, so the session can be told (F7).
 
     A config edited after install, or a project config the global install never
@@ -49,7 +50,7 @@ def _missing_variants(cfg):
     if cfg is None:
         return ()
     try:
-        return variants.missing_variants(cfg, _agent_dirs())
+        return variants.missing_variants(cfg, _agent_dirs(cwd))
     except Exception:
         return ()
 
@@ -59,11 +60,12 @@ def main():
     if hookio.is_child():
         sys.exit(0)
 
-    hookio.read_event()
-    current_model, _ = hookio.current_model_effort()
-    cfg = _load_config()
+    event = hookio.read_event()
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else os.getcwd()
+    current_model, _ = hookio.current_model_effort(event)
+    cfg = _load_config(cwd)
     context = advisory.render_session_context(
-        current_model, cfg, _missing_variants(cfg)
+        current_model, cfg, _missing_variants(cfg, cwd)
     )
     print(
         json.dumps(

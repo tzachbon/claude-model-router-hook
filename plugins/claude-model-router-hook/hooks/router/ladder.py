@@ -1,12 +1,13 @@
-"""Tier constants, decision type, and model-string utilities (FR-1, FR-2, FR-3, FR-6)."""
+"""Tier constants, decision type, and model-string utilities."""
 
 from dataclasses import dataclass
+import re
 
 TIERS = ("haiku", "sonnet", "opus", "fable")  # index = rank; mythos nowhere
 MODEL_IDS = {
     "haiku": "claude-haiku-4-5",
     "sonnet": "claude-sonnet-5",
-    "opus": "claude-opus-4-8",
+    "opus": "claude-opus-5",
     "fable": "claude-fable-5",
 }
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -31,9 +32,19 @@ class Decision:
 
 
 def detect_tier(model_str):
-    """Map a model string (alias, full ID, or suffixed) to a ladder tier by substring."""
+    """Map a model alias, ID, or ``[context]``-suffixed value to a tier.
+
+    Match model-family tokens rather than arbitrary substrings.  A setting such
+    as ``notsonnet`` is not a Sonnet request, while the host's normal aliases
+    and IDs (``opus``, ``claude-opus-5``, ``opus[1m]``) remain supported.
+    """
+    if not isinstance(model_str, str):
+        return None
+    lower = model_str.lower()
+    if "mythos" in lower:
+        return None
     for tier in TIERS:
-        if tier in model_str:
+        if re.search(r"(?:^|[-_])" + re.escape(tier) + r"(?:$|[-_\[])", lower):
             return tier
     return None
 

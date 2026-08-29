@@ -6,17 +6,25 @@ from .config import DEFAULTS, as_dict, resolve_list, safe_regex_match
 from .ladder import EFFORTS, TIERS, Decision, detect_tier, effort_distance
 from .taxonomy import CLASSES
 
-# Same-tier cells where effort escalates past the class target (effort-first):
-# the session already sits on the target tier, so only effort can go higher.
-_STAY_XHIGH_CLASSES = ("architecture", "extreme")
+# A user may lower a class target in their config, but work that is already on
+# the target tier must not lose the depth expected for architecture-scale work.
+# ``max`` remains intact for an extreme target; the floor only raises effort.
+_SAME_TIER_EFFORT_FLOORS = {
+    "architecture": "xhigh",
+    "extreme": "xhigh",
+}
 
 # Shipped defaults (config-extendable via capability_gates / effort_floors).
 DEFAULT_GATE_PATTERNS = [
     r"\bsendmessage\b",
     r"\bhand[-\s]?offs?\b",
+    r"\bdelegat\w*\b",
     r"\bcoordinat\w*\s+agents?\b",
     r"\bspawn\w*\s+sub[-\s]?agents?\b",
     r"\bmulti[-\s]?agent\b",
+    r"\bagent\s+teams?\b",
+    r"\bparallel(?:iz\w*|\s+(?:work|tasks?))?\b",
+    r"\bfan[-\s]?out\b",
 ]
 DEFAULT_FLOOR_PATTERNS = [
     r"\bmigrat\w*\b",
@@ -66,8 +74,8 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score, promp
 
     Rules (design "(model, effort) output matrix" + Requirements Amendments):
     - current tier below target -> up-route to the class target (always warns).
-    - same tier -> stay; architecture/extreme escalate effort to xhigh; match when
-      effort_distance < effort_warn_distance (returns None, anti-nagging).
+    - same tier -> stay; architecture/extreme retain at least xhigh effort; match
+      when effort_distance < effort_warn_distance (returns None, anti-nagging).
     - current tier above target: haiku targets down-route (guard: margin >=
       downroute_margin, else None); other classes stay at the current tier with
       the target effort, same effort-distance match rule.
@@ -87,13 +95,15 @@ def main_prompt_decision(klass, current_model, current_effort, cfg, score, promp
     target_rank = TIERS.index(target.model)
 
     if current_rank < target_rank:
-        # Up-route (incl. haiku -> sonnet for implementation/debugging).
+        # Up-route (including a Haiku or Sonnet session to the class target).
         return target
 
     if current_rank == target_rank:
         if target.model == "haiku":
             return None  # mechanical@haiku: match, no effort to compare
-        effort = "xhigh" if klass in _STAY_XHIGH_CLASSES else target.effort
+        effort = _max_effort(
+            target.effort, _SAME_TIER_EFFORT_FLOORS.get(klass)
+        )
         if effort_distance(current_effort, effort) < warn_distance:
             return None  # match (same tier, effort close enough)
         return Decision(target.model, effort, klass, target.source)
@@ -141,7 +151,7 @@ def min_gated_target(cfg):
     literally, would leave gated work on the bottom tier and, because haiku
     decisions carry no effort, drop every effort floor with it. An unusable
     implementation target has nothing to read at all. Neither may be answered
-    with the shipped default: DEFAULTS targets sonnet, so one typo in one class
+    with the shipped default: DEFAULTS targets Opus, so one typo in one class
     would resurrect a model the config declares nowhere, which is the exact
     failure this module exists to prevent.
 
@@ -240,11 +250,11 @@ def gate_outcomes(klass, cfg):
     return outcomes
 
 
-def apply_gates(prompt, decision, cfg):
+def apply_gates(prompt, decision, cfg, delegated=False):
     """Capability gates and effort floors on a classified decision (FR-21, FR-22).
 
-    - capability_gates patterns (handoff/multi-agent work) -> min tier is
-      min_gated_target; a decision below it is bumped (AC-6.3).
+    - capability_gates patterns and nested delegation -> min tier is
+      min_gated_target; a decision below it is bumped.
     - debugging class -> effort >= high (AC-6.5).
     - effort_floors patterns (data-handling risk) -> effort >= effort_floors.floor;
       any floor also implies that min tier (haiku carries no effort).
@@ -265,7 +275,14 @@ def apply_gates(prompt, decision, cfg):
         floor = _max_effort(floor, configured_floor(cfg))
 
     gate_patterns = resolve_list(cfg.get("capability_gates"), "patterns", DEFAULT_GATE_PATTERNS)
-    gated = floor is not None or safe_regex_match(gate_patterns, prompt_lower)
+    # A child Agent call is coordination even when its concise task prompt does
+    # not repeat words such as "delegate" or "handoff".  Treating it as gated
+    # keeps a nested fan-out from silently dropping to the mechanical tier.
+    gated = (
+        bool(delegated)
+        or floor is not None
+        or safe_regex_match(gate_patterns, prompt_lower)
+    )
 
     model, effort = _gated_pair(decision.model, decision.effort, floor, gated, cfg)
     if model == decision.model and effort == decision.effort:

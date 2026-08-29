@@ -35,6 +35,7 @@ from router.config import (  # noqa: E402
     v1_hint_due,
 )
 from router import taxonomy  # noqa: E402
+from router import hookio  # noqa: E402
 from router.taxonomy import (  # noqa: E402
     CLASSES,
     TEXT_CAP,
@@ -136,6 +137,28 @@ class TestDetectTier(unittest.TestCase):
 
     def test_mythos_returns_none(self):
         self.assertIsNone(detect_tier("claude-mythos-5"))
+
+    def test_embedded_tier_word_is_not_a_model(self):
+        self.assertIsNone(detect_tier("notsonnet"))
+
+
+class TestHookRuntimeState(unittest.TestCase):
+
+    def test_runtime_event_beats_environment_and_settings(self):
+        event = {"model": "claude-opus-5", "effort": {"level": "max"}}
+        with mock.patch.dict(os.environ, {"ANTHROPIC_MODEL": "haiku"}), \
+             mock.patch.object(hookio, "_read_settings", return_value={
+                 "model": "sonnet", "effortLevel": "low"
+             }):
+            self.assertEqual(
+                hookio.current_model_effort(event), ("claude-opus-5", "max")
+            )
+
+    def test_runtime_string_effort_is_accepted(self):
+        self.assertEqual(
+            hookio.current_model_effort({"model": "opus", "effort": "xhigh"}),
+            ("opus", "xhigh"),
+        )
 
 
 # ── Tests: split_suffix ────────────────────────────────────────────────────
@@ -348,7 +371,7 @@ class TestClassTargetResolution(unittest.TestCase):
         cfg = self._cfg_with_target("debugging", {"effort": "low"})
         decision = target_for_class("debugging", cfg)
         self.assertIsNotNone(decision)
-        self.assertEqual(decision.model, "sonnet")
+        self.assertEqual(decision.model, "opus")
         self.assertEqual(decision.effort, "low")
 
     def test_model_switch_to_haiku_drops_inherited_effort(self):
@@ -382,7 +405,7 @@ class TestClassTargetResolution(unittest.TestCase):
         cfg = self._cfg_with_target("debugging", {"effort": "ultra"})
         decision = target_for_class("debugging", cfg)  # must not raise
         self.assertIsNotNone(decision)
-        self.assertEqual(decision.model, "sonnet")
+        self.assertEqual(decision.model, "opus")
         self.assertEqual(decision.effort, "high")  # debugging default
 
 
@@ -666,18 +689,42 @@ class TestTaxonomyAbstain(unittest.TestCase):
         klass, _ = classify_heuristic(None, self.cfg)
         self.assertIsNone(klass)
 
+    def test_non_string_prompt_abstains(self):
+        klass, _ = classify_heuristic(7, self.cfg)
+        self.assertIsNone(klass)
+
     def test_low_signal_prompt_abstains(self):
         """A greeting with no class signal falls below the low-confidence floor."""
         klass, _ = classify_heuristic("hello there friend", self.cfg)
         self.assertIsNone(klass)
 
-    def test_mechanical_zeroed_above_max_words(self):
-        """A git op padded past mechanical_max_words loses its mechanical score."""
+    def test_explicit_mechanical_pattern_survives_above_max_words(self):
+        """A long, explicit mechanical batch remains mechanical."""
         max_words = self.cfg["thresholds"]["mechanical_max_words"]
         prompt = "git commit " + ("extra " * (max_words + 12))
         result = score(prompt, self.cfg)
         self.assertGreater(result.word_count, max_words)
-        self.assertEqual(result.scores["mechanical"], 0.0)
+        self.assertEqual(result.scores["mechanical"], 2.0)
+
+    def test_keyword_bag_abstains_without_cli_fallback(self):
+        prompt = (
+            "debug regression architecture tradeoff migration rewrite platform "
+            "epic race condition traceback deadlock refactor deploy prod"
+        )
+        klass, _ = classify_heuristic(prompt, self.cfg)
+        self.assertIsNone(klass)
+
+    def test_incidental_architecture_words_do_not_make_a_task(self):
+        prompt = (
+            "In what year did the architect who redesigned the migration of the "
+            "old monolith building win the strategy award?"
+        )
+        klass, _ = classify_heuristic(prompt, self.cfg)
+        self.assertIsNone(klass)
+
+    def test_common_editing_request_has_task_intent(self):
+        klass, _ = classify_heuristic("change the CSS to use the new token", self.cfg)
+        self.assertEqual(klass, "implementation")
 
 
 # ── Tests: determinism, same prompt + config -> identical (NFR-10) ─────────
@@ -740,12 +787,12 @@ class TestMainPromptMatrix(unittest.TestCase):
     def test_mechanical_on_fable_downroutes_haiku(self):
         self._assert_decision(self._cell("mechanical", "fable", "high"), "haiku", None)
 
-    # implementation row (target sonnet/medium)
-    def test_implementation_on_haiku_uproutes_sonnet(self):
-        self._assert_decision(self._cell("implementation", "haiku", "high"), "sonnet", "medium")
+    # implementation row (target opus/medium)
+    def test_implementation_on_haiku_uproutes_opus(self):
+        self._assert_decision(self._cell("implementation", "haiku", "high"), "opus", "medium")
 
-    def test_implementation_on_sonnet_stays_medium(self):
-        self._assert_decision(self._cell("implementation", "sonnet", "max"), "sonnet", "medium")
+    def test_implementation_on_sonnet_uproutes_opus_medium(self):
+        self._assert_decision(self._cell("implementation", "sonnet", "max"), "opus", "medium")
 
     def test_implementation_on_opus_stays_medium(self):
         self._assert_decision(self._cell("implementation", "opus", "max"), "opus", "medium")
@@ -753,12 +800,12 @@ class TestMainPromptMatrix(unittest.TestCase):
     def test_implementation_on_fable_stays_medium(self):
         self._assert_decision(self._cell("implementation", "fable", "max"), "fable", "medium")
 
-    # debugging row (target sonnet/high)
-    def test_debugging_on_haiku_uproutes_sonnet_high(self):
-        self._assert_decision(self._cell("debugging", "haiku", "high"), "sonnet", "high")
+    # debugging row (target opus/high)
+    def test_debugging_on_haiku_uproutes_opus_high(self):
+        self._assert_decision(self._cell("debugging", "haiku", "high"), "opus", "high")
 
-    def test_debugging_on_sonnet_stays_high(self):
-        self._assert_decision(self._cell("debugging", "sonnet", "low"), "sonnet", "high")
+    def test_debugging_on_sonnet_uproutes_opus_high(self):
+        self._assert_decision(self._cell("debugging", "sonnet", "low"), "opus", "high")
 
     def test_debugging_on_opus_stays_high(self):
         self._assert_decision(self._cell("debugging", "opus", "low"), "opus", "high")
@@ -766,31 +813,31 @@ class TestMainPromptMatrix(unittest.TestCase):
     def test_debugging_on_fable_stays_high(self):
         self._assert_decision(self._cell("debugging", "fable", "low"), "fable", "high")
 
-    # architecture row (target opus/high; xhigh when already on opus)
-    def test_architecture_on_haiku_uproutes_opus_high(self):
-        self._assert_decision(self._cell("architecture", "haiku", "high"), "opus", "high")
+    # architecture row (target opus/xhigh)
+    def test_architecture_on_haiku_uproutes_opus_xhigh(self):
+        self._assert_decision(self._cell("architecture", "haiku", "high"), "opus", "xhigh")
 
-    def test_architecture_on_sonnet_uproutes_opus_high(self):
-        self._assert_decision(self._cell("architecture", "sonnet", "high"), "opus", "high")
+    def test_architecture_on_sonnet_uproutes_opus_xhigh(self):
+        self._assert_decision(self._cell("architecture", "sonnet", "high"), "opus", "xhigh")
 
     def test_architecture_on_opus_stays_xhigh(self):
         self._assert_decision(self._cell("architecture", "opus", "low"), "opus", "xhigh")
 
-    def test_architecture_on_fable_stays_high(self):
-        self._assert_decision(self._cell("architecture", "fable", "low"), "fable", "high")
+    def test_architecture_on_fable_stays_xhigh(self):
+        self._assert_decision(self._cell("architecture", "fable", "low"), "fable", "xhigh")
 
-    # extreme row (target fable/high; xhigh when already on fable)
-    def test_extreme_on_haiku_uproutes_fable_high(self):
-        self._assert_decision(self._cell("extreme", "haiku", "high"), "fable", "high")
+    # extreme row (target opus/max)
+    def test_extreme_on_haiku_uproutes_opus_max(self):
+        self._assert_decision(self._cell("extreme", "haiku", "high"), "opus", "max")
 
-    def test_extreme_on_sonnet_uproutes_fable_high(self):
-        self._assert_decision(self._cell("extreme", "sonnet", "high"), "fable", "high")
+    def test_extreme_on_sonnet_uproutes_opus_max(self):
+        self._assert_decision(self._cell("extreme", "sonnet", "high"), "opus", "max")
 
-    def test_extreme_on_opus_uproutes_fable_high(self):
-        self._assert_decision(self._cell("extreme", "opus", "high"), "fable", "high")
+    def test_extreme_on_opus_raises_to_max(self):
+        self._assert_decision(self._cell("extreme", "opus", "high"), "opus", "max")
 
-    def test_extreme_on_fable_stays_xhigh(self):
-        self._assert_decision(self._cell("extreme", "fable", "low"), "fable", "xhigh")
+    def test_extreme_on_fable_stays_max(self):
+        self._assert_decision(self._cell("extreme", "fable", "low"), "fable", "max")
 
     def test_haiku_decisions_never_carry_effort(self):
         """Every haiku result across the matrix (and target) has effort None."""
@@ -847,18 +894,23 @@ class TestCapabilityGates(unittest.TestCase):
     def test_handoff_never_haiku(self):
         decision = target_for_class("mechanical", self.cfg)  # haiku, no effort
         gated = apply_gates("coordinate agents to split this work", decision, self.cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
         self.assertEqual(gated.effort, "medium")
 
     def test_sendmessage_gate_bumps_haiku(self):
         decision = target_for_class("mechanical", self.cfg)
         gated = apply_gates("use SendMessage to hand off", decision, self.cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
 
     def test_multi_agent_gate_bumps_haiku(self):
         decision = target_for_class("mechanical", self.cfg)
         gated = apply_gates("run a multi-agent workflow", decision, self.cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
+
+    def test_nested_spawn_never_haiku(self):
+        decision = target_for_class("mechanical", self.cfg)
+        gated = apply_gates("rename src/a.py to src/b.py", decision, self.cfg, delegated=True)
+        self.assertEqual((gated.model, gated.effort), ("opus", "medium"))
 
     def test_no_gate_leaves_haiku(self):
         decision = target_for_class("mechanical", self.cfg)
@@ -882,29 +934,29 @@ class TestEffortFloors(unittest.TestCase):
         self.cfg = _det_cfg()
 
     def test_debugging_floor_raises_low_to_high(self):
-        decision = Decision("sonnet", "low", "debugging", "heuristic")
+        decision = Decision("opus", "low", "debugging", "heuristic")
         gated = apply_gates("plain prompt", decision, self.cfg)
         self.assertEqual(gated.effort, "high")
 
     def test_debugging_floor_leaves_high_alone(self):
-        decision = Decision("sonnet", "high", "debugging", "heuristic")
+        decision = Decision("opus", "high", "debugging", "heuristic")
         gated = apply_gates("plain prompt", decision, self.cfg)
         self.assertIs(gated, decision)
 
     def test_data_handling_floor_raises_effort(self):
-        decision = Decision("sonnet", "low", "implementation", "heuristic")
+        decision = Decision("opus", "low", "implementation", "heuristic")
         gated = apply_gates("run the database migration on prod", decision, self.cfg)
         self.assertEqual(gated.effort, "high")
 
-    def test_data_handling_floor_implies_min_sonnet(self):
-        """A data-handling prompt on a haiku decision -> min tier sonnet + floor."""
+    def test_data_handling_floor_implies_implementation_target(self):
+        """A data-handling prompt on haiku reaches the implementation target."""
         decision = Decision("haiku", None, "mechanical", "heuristic")
         gated = apply_gates("backfill the database and delete data", decision, self.cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
         self.assertEqual(gated.effort, "high")
 
     def test_no_floor_leaves_decision(self):
-        decision = Decision("sonnet", "medium", "implementation", "heuristic")
+        decision = Decision("opus", "medium", "implementation", "heuristic")
         gated = apply_gates("write a small helper function", decision, self.cfg)
         self.assertIs(gated, decision)
 
@@ -937,7 +989,7 @@ class TestGateFloorResolutionParity(unittest.TestCase):
         }
         decision = target_for_class("mechanical", self.cfg)
         gated = apply_gates("please widgetize the thing", decision, self.cfg)
-        self.assertEqual(gated.model, "sonnet")
+        self.assertEqual(gated.model, "opus")
 
     def test_replace_mode_discards_default_floor_patterns(self):
         self.cfg["effort_floors"] = {
@@ -945,7 +997,7 @@ class TestGateFloorResolutionParity(unittest.TestCase):
             "patterns": [r"\bcustomfloor\b"],
             "floor": "high",
         }
-        decision = Decision("sonnet", "low", "implementation", "heuristic")
+        decision = Decision("opus", "low", "implementation", "heuristic")
         # A default floor phrase no longer raises the floor under replace mode.
         gated = apply_gates("run the database migration on prod", decision, self.cfg)
         self.assertEqual(gated.effort, "low")
@@ -977,25 +1029,25 @@ class TestEffortWarnDistance(unittest.TestCase):
 
     def test_distance_one_is_silent(self):
         """debugging target high; current xhigh (distance 1) -> match (None)."""
-        d = main_prompt_decision("debugging", "sonnet", "xhigh", self.cfg, _score(0))
+        d = main_prompt_decision("debugging", "opus", "xhigh", self.cfg, _score(0))
         self.assertIsNone(d)
 
     def test_distance_below_warn_is_silent(self):
-        d = main_prompt_decision("debugging", "sonnet", "medium", self.cfg, _score(0))
+        d = main_prompt_decision("debugging", "opus", "medium", self.cfg, _score(0))
         self.assertIsNone(d)
 
     def test_distance_two_warns(self):
         """current low vs target high (distance 2) -> Decision emitted."""
-        d = main_prompt_decision("debugging", "sonnet", "low", self.cfg, _score(0))
+        d = main_prompt_decision("debugging", "opus", "low", self.cfg, _score(0))
         self.assertIsNotNone(d)
-        self.assertEqual(d.model, "sonnet")
+        self.assertEqual(d.model, "opus")
         self.assertEqual(d.effort, "high")
 
     def test_tier_mismatch_always_warns_regardless_of_effort(self):
         """Up-route target even when effort already matches (distance 0)."""
         d = main_prompt_decision("architecture", "sonnet", "high", self.cfg, _score(0))
         self.assertEqual(d.model, "opus")
-        self.assertEqual(d.effort, "high")
+        self.assertEqual(d.effort, "xhigh")
 
 
 class TestCliFallback(unittest.TestCase):

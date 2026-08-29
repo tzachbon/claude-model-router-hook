@@ -38,7 +38,7 @@ DEFAULTS = {
             "patterns": [],
             "remove_keywords": [],
             "remove_patterns": [],
-            "target": {"model": "sonnet", "effort": "medium"},
+            "target": {"model": "opus", "effort": "medium"},
         },
         "debugging": {
             "mode": "extend",
@@ -46,7 +46,7 @@ DEFAULTS = {
             "patterns": [],
             "remove_keywords": [],
             "remove_patterns": [],
-            "target": {"model": "sonnet", "effort": "high"},
+            "target": {"model": "opus", "effort": "high"},
         },
         "architecture": {
             "mode": "extend",
@@ -54,7 +54,7 @@ DEFAULTS = {
             "patterns": [],
             "remove_keywords": [],
             "remove_patterns": [],
-            "target": {"model": "opus", "effort": "high"},
+            "target": {"model": "opus", "effort": "xhigh"},
         },
         "extreme": {
             "mode": "extend",
@@ -62,7 +62,7 @@ DEFAULTS = {
             "patterns": [],
             "remove_keywords": [],
             "remove_patterns": [],
-            "target": {"model": "fable", "effort": "high"},
+            "target": {"model": "opus", "effort": "max"},
         },
     },
     "capability_gates": {"mode": "extend", "patterns": [], "remove_patterns": []},

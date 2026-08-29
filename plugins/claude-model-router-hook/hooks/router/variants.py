@@ -17,6 +17,7 @@ matching a pre-key rendering) are ever overwritten or pruned.
 """
 
 import os
+import pathlib
 import re
 
 from .ladder import EFFORTS, TIERS
@@ -39,7 +40,21 @@ AGENT_DESCRIPTION_ESCALATED = (
     "Spawned by the model router hook; do not invoke directly."
 )
 
-AGENT_BODY = "Complete the delegated task exactly as prompted; return a concise report."
+LEGACY_AGENT_BODY = "Complete the delegated task exactly as prompted; return a concise report."
+
+AGENT_BODY = (
+    LEGACY_AGENT_BODY
+    + "\n\nWork directly unless the task has independent, self-contained portions "
+    "that need parallel investigation. Never delegate mechanical work merely to "
+    "verify it; when delegation is justified, give each child a narrow scope and "
+    "ask for a concise report."
+)
+
+HAIKU_AGENT_BODY = (
+    LEGACY_AGENT_BODY
+    + "\n\nWork directly and finish this narrow mechanical task yourself; do not "
+    "delegate it."
+)
 
 
 def variant_name(model, effort):
@@ -107,7 +122,12 @@ def agent_markdown(name, model, effort, classes):
     ]
     if effort is not None:
         lines.append("effort: " + effort)
-    lines += [OWNERSHIP_KEY + ": true", "---", "", AGENT_BODY, ""]
+    if model == "haiku":
+        # A mechanical worker should finish its narrow task rather than turn a
+        # cheap, deterministic operation into an unbounded delegation tree.
+        lines.append("disallowedTools: Agent")
+    body = HAIKU_AGENT_BODY if model == "haiku" else AGENT_BODY
+    lines += [OWNERSHIP_KEY + ": true", "---", "", body, ""]
     return "\n".join(lines)
 
 
@@ -121,7 +141,7 @@ def _legacy_markdown(name, model, effort, classes):
     ]
     if effort is not None:
         lines.append("effort: " + effort)
-    lines += ["---", "", AGENT_BODY, ""]
+    lines += ["---", "", LEGACY_AGENT_BODY, ""]
     return "\n".join(lines)
 
 
@@ -135,7 +155,7 @@ _LEGACY_RE = re.compile(
     r"Spawned by the model router hook; do not invoke directly\.\n"
     r"model: (?P<model>[^\n]+)\n"
     r"(?:effort: (?P<effort>[^\n]+)\n)?"
-    r"---\n\n" + re.escape(AGENT_BODY) + r"\n$"
+    r"---\n\n" + re.escape(LEGACY_AGENT_BODY) + r"\n$"
 )
 
 
@@ -244,6 +264,23 @@ def installed_names(agent_dirs, names):
         for name in names
         if any(is_installed(directory, name) for directory in agent_dirs)
     }
+
+
+def project_agent_dirs(cwd):
+    """Candidate project agent directories from ``cwd`` out to filesystem root.
+
+    Claude Code resolves bare custom-agent names from every ancestor
+    ``.claude/agents`` directory, not only from the user's global directory.
+    Returning candidates even when they do not exist keeps this helper pure;
+    ``is_installed`` performs the actual safe file check.
+    """
+    if not isinstance(cwd, str) or not cwd:
+        return ()
+    try:
+        root = pathlib.Path(cwd).resolve()
+    except (OSError, ValueError):
+        return ()
+    return tuple(str(parent / ".claude" / "agents") for parent in (root, *root.parents))
 
 
 def missing_variants(cfg, agent_dirs):

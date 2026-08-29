@@ -13,7 +13,6 @@ config. Edit the row copy in CLASS_ROWS here, nowhere else.
 import textwrap
 
 from .config import DEFAULTS
-from .ladder import TIERS
 from .policy import target_for_class
 
 # Per-class "When to use" copy; tuple order is the table row order. The model
@@ -78,9 +77,10 @@ _SELECTION_LEAD = (
 # contributes no clause, so the prose never names a model for it.
 _SELECTION_CLAUSES = (
     ("mechanical", "mechanical work goes to "),
-    ("implementation", "standard coding to "),
+    ("implementation", "implementation to "),
+    ("debugging", "debugging to "),
     ("architecture", "deep analysis to "),
-    ("extreme", "only platform-scale efforts to "),
+    ("extreme", "platform-scale work to "),
 )
 
 _SELECTION_NONE = (
@@ -129,13 +129,6 @@ def _closing_paragraph(targets):
     if not clauses:
         return _SELECTION_LEAD + _SELECTION_NONE
 
-    # "Never default all sub-agents to X": the deep-analysis tier, or the
-    # highest routable one when that class is unroutable.
-    top = targets.get("architecture")
-    if not top:
-        routable = [t for t in targets.values() if t]
-        top = max(routable, key=lambda t: TIERS.index(t[0]))
-
     if len(clauses) == 1:
         joined = clauses[0]
     elif len(clauses) == 2:
@@ -144,9 +137,8 @@ def _closing_paragraph(targets):
         joined = ", ".join(clauses[:-1]) + ", and " + clauses[-1]
     return (
         _SELECTION_LEAD
-        + " Never default all sub-agents to "
-        + top[0]
-        + ". Match the model to the work: "
+        + " Do not default every sub-agent to the highest effort. Match the "
+        + "model and effort to the work: "
         + joined
         + "."
     )

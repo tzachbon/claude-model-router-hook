@@ -49,20 +49,31 @@ def _read_settings(path):
         return {}
 
 
-def current_model_effort():
-    """Return (model_str, effort) from settings precedence (A-2/A-6).
+def current_model_effort(event=None):
+    """Return the active ``(model, effort)`` from hook data then settings.
 
-    Model: env ANTHROPIC_MODEL > .claude/settings.local.json > .claude/settings.json
-    > ~/.claude/settings.json. Effort: effortLevel key, same file precedence,
-    default "high".
+    Recent Claude Code hook events carry an active model at SessionStart and an
+    ``effort.level`` at tool-use events.  Prefer those runtime values whenever
+    present; settings remain the compatibility fallback for older hosts and
+    UserPromptSubmit events that do not include them.
     """
+    event = event if isinstance(event, dict) else {}
+    event_model = event.get("model")
+    event_effort = event.get("effort")
+    model = event_model if isinstance(event_model, str) else ""
+    if isinstance(event_effort, dict):
+        effort = event_effort.get("level")
+    else:
+        effort = event_effort
+    effort = effort if isinstance(effort, str) else ""
+
     paths = (
         os.path.join(".claude", "settings.local.json"),
         os.path.join(".claude", "settings.json"),
         os.path.expanduser("~/.claude/settings.json"),
     )
-    model = os.environ.get("ANTHROPIC_MODEL", "")
-    effort = ""
+    if not model:
+        model = os.environ.get("ANTHROPIC_MODEL", "")
     for path in paths:
         settings = _read_settings(path)
         if not model and isinstance(settings.get("model"), str):
@@ -79,7 +90,7 @@ def write_settings(model_with_suffix, effort):
 
     Unparseable settings -> return False (degrade to warn, never clobber).
     Missing file -> treated as empty dict and created. `max` clamps to `xhigh`
-    (settings rejects max). effort None (haiku decision) writes model only and
+    (persisted settings reject max). effort None (haiku decision) writes model only and
     removes any stale effortLevel. All other keys preserved.
     """
     path = os.path.expanduser("~/.claude/settings.json")

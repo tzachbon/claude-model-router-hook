@@ -113,13 +113,13 @@
         "allow_fable_autoswitch": {
           "type": "boolean",
           "default": false,
-          "description": "Allow the router to autoswitch/inject the fable model. When false, fable decisions behave like warn."
+          "description": "Allow the router to autoswitch/inject a custom fable target. When false, fable decisions behave like warn."
         },
         "subagent_enforcement": {
           "type": "string",
           "enum": ["on", "advisory", "off"],
           "default": "on",
-          "description": "\"on\" rewrites/injects subagent models; \"advisory\" emits a systemMessage only; \"off\" disables."
+          "description": "\"on\" rewrites/injects subagent models at every host-permitted nesting level; \"advisory\" emits a systemMessage only; \"off\" disables."
         },
         "classifier": {
           "type": "object",
@@ -167,7 +167,7 @@
             "mechanical_max_words": {
               "type": "integer",
               "default": 60,
-              "description": "Mechanical-class patterns only match if the prompt is shorter than this word count (from v1 haiku_max_word_count)."
+              "description": "Long prompts lose only the weak mechanical short-imperative prior; explicit mechanical patterns still match."
             },
             "long_prompt_words": {
               "type": "integer",
@@ -189,7 +189,7 @@
         "capability_gates": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Patterns that gate up to a minimum tier (sonnet).",
+          "description": "Patterns that gate up to the configured implementation target. Nested subagent spawns are gated automatically.",
           "properties": {
             "mode": {
               "type": "string",
@@ -209,7 +209,7 @@
         "effort_floors": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Patterns that raise the effort floor (implies a minimum tier of sonnet).",
+          "description": "Patterns that raise the effort floor (implies the configured implementation target as a minimum tier).",
           "properties": {
             "mode": {
               "type": "string",
@@ -226,7 +226,7 @@
             },
             "floor": {
               "type": "string",
-              "enum": ["low", "medium", "high", "xhigh"],
+              "enum": ["low", "medium", "high", "xhigh", "max"],
               "default": "high",
               "description": "Effort level enforced as the floor for matching prompts."
             }
@@ -277,7 +277,7 @@
             },
             "effort": {
               "type": "string",
-              "enum": ["low", "medium", "high", "xhigh"],
+              "enum": ["low", "medium", "high", "xhigh", "max"],
               "description": "Effort level for this class. Omitted for the mechanical/haiku target."
             }
           }

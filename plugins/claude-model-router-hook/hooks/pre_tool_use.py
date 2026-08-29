@@ -31,7 +31,7 @@ def _env_model_warning(decision_model):
     )
 
 
-def _resolve_variant(variant):
+def _resolve_variant(variant, cwd):
     """Subagent_type for a variant, or None when no usable agent file backs it.
 
     A plugin-scoped name resolves only under a plugin install, so it is used
@@ -56,7 +56,11 @@ def _resolve_variant(variant):
         os.path.join(plugin_root, "agents"), variant
     ):
         return PLUGIN_PREFIX + variant
-    if variants.is_installed(str(Path.home() / ".claude" / "agents"), variant):
+    # A bare agent name may resolve from a project directory nearer than the
+    # global ~/.claude/agents directory.  Check that same host search shape so
+    # a usable project-scoped routed variant is never mistaken for missing.
+    agent_dirs = [*variants.project_agent_dirs(cwd), str(Path.home() / ".claude" / "agents")]
+    if any(variants.is_installed(directory, variant) for directory in agent_dirs):
         return variant
     return None
 
@@ -81,7 +85,8 @@ def main():
     ):
         sys.exit(0)  # idempotency guard: already rewritten (scoped or unscoped)
 
-    cfg = config.load_config(global_path=config.global_config_path())
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else os.getcwd()
+    cfg = config.load_config(global_path=config.global_config_path(), cwd=cwd)
     enforcement = cfg.get("subagent_enforcement", "on")
     if enforcement == "off":
         sys.exit(0)
@@ -95,7 +100,9 @@ def main():
     target = policy.target_for_class(klass, cfg)
     if target is None:
         sys.exit(0)  # invalid class target: pass through (fail-safe skip)
-    decision = policy.apply_gates(prompt, target, cfg)
+    decision = policy.apply_gates(
+        prompt, target, cfg, delegated=bool(event.get("agent_id"))
+    )
 
     explicit = tool_input.get("model")
     if explicit is not None:
@@ -139,7 +146,7 @@ def main():
     # Variant set comes from the configured class targets, so the hook can only
     # ever select a variant this config declares (and install.sh generated).
     declared = variants.variant_map(cfg).get((decision.model, decision.effort))
-    variant = _resolve_variant(declared) if (generic and declared) else None
+    variant = _resolve_variant(declared, cwd) if (generic and declared) else None
     uninstalled = declared if (generic and declared and not variant) else None
     if variant:
         updated["subagent_type"] = variant

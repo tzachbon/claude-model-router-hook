@@ -131,14 +131,14 @@ run_hook "format and lint the code" "$HOME_OPUS"
 assert_routes_to "confident mechanical prompt downroutes to haiku from opus" "haiku"
 
 run_hook "build a new feature" "$HOME_DIR"
-assert_routes_to "implementation prompt allowed when already on sonnet" "allow"
+assert_routes_to "implementation prompt up-routes sonnet session to opus" "opus"
 
 HOME_HAIKU=$(make_home "haiku")
 
 run_hook "build a new feature" "$HOME_HAIKU"
-# v2 intentional change: implementation work up-routes a haiku session to sonnet
-# warn (v1 stayed silent on haiku->sonnet). Design "haiku->sonnet" decision.
-assert_routes_to "implementation prompt up-routes haiku session to sonnet warn" "sonnet"
+# Implementation work is agentic coding by default, so it up-routes a Haiku
+# session to Opus with medium effort.
+assert_routes_to "implementation prompt up-routes haiku session to opus" "opus"
 
 run_hook "~ bypass the router" "$HOME_DIR"
 assert_routes_to "tilde prefix bypasses all routing" "allow"
@@ -163,7 +163,7 @@ cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
 }
 EOF
 
-run_hook "my-custom-keyword should trigger opus" "$HOME_DIR"
+run_hook "please investigate my-custom-keyword" "$HOME_DIR"
 assert_routes_to "user-defined keyword triggers opus" "opus"
 
 run_hook "evaluate the tradeoff" "$HOME_DIR"
@@ -192,7 +192,7 @@ EOF
 run_hook "analyze this" "$HOME_DIR"
 assert_routes_to "default architecture keywords removed in replace mode, allow" "allow"
 
-run_hook "only-my-keyword here" "$HOME_DIR"
+run_hook "please investigate only-my-keyword" "$HOME_DIR"
 assert_routes_to "user-defined replace keyword triggers opus" "opus"
 
 rm -rf "$HOME_DIR"
@@ -218,7 +218,7 @@ EOF
 run_hook "analyze this problem" "$HOME_DIR"
 assert_routes_to "'analyze' removed from defaults, allow" "allow"
 
-run_hook "deep dive into this" "$HOME_DIR"
+run_hook "do a deep dive into this" "$HOME_DIR"
 assert_routes_to "other default architecture keywords still work" "opus"
 
 rm -rf "$HOME_DIR"
@@ -238,10 +238,11 @@ cat > "$HOME_DIR/.claude/model-router.json" <<'EOF'
 }
 EOF
 
-# "lint" with 10 words: mechanical is zeroed once word count passes the threshold (5)
+# A keyword buried in non-task filler must abstain instead of overriding the
+# current model. Explicit task-shaped mechanical batches are covered in unit evals.
 PROMPT="word word word word word word word word word lint"
 run_hook "$PROMPT" "$HOME_DIR"
-assert_routes_to "10 words exceeds mechanical_max_words=5, mechanical zeroed, allow" "allow"
+assert_routes_to "non-task filler with a mechanical keyword abstains" "allow"
 
 rm -rf "$HOME_DIR"
 
@@ -271,7 +272,7 @@ EOF
 
 # 25-word prompt: over 2x the project threshold (10) so the architecture length
 # signal fires (+2), but well under the global threshold (500) where it stays silent.
-PROMPT="word word word word word word word word word word word word word word word word word word word word word word word word word"
+PROMPT="analyze word word word word word word word word word word word word word word word word word word word word word word word word"
 run_hook "$PROMPT" "$HOME_DIR" "$PROJECT_DIR"
 assert_routes_to "project long_prompt_words=10 wins over global=500" "opus"
 
@@ -325,28 +326,28 @@ assert_stderr_contains() {
     fi
 }
 
-# ── Suite 9: Extreme class, effort emission, suffix (FR-41, AC-1.1/1.4/10.5) ──
+# ── Suite 9: Extreme class, max effort emission, suffix ──────────────────────
 echo ""
-echo "--- Suite 9: Extreme -> fable, effort message, [1m] suffix ---"
+echo "--- Suite 9: Extreme -> opus/max, effort message, [1m] suffix ---"
 
 EXTREME_PROMPT="write an rfc design doc for the distributed architecture and evaluate the tradeoffs"
 
 HOME_DIR=$(make_home "sonnet")
 
 run_hook "$EXTREME_PROMPT" "$HOME_DIR"
-assert_routes_to "extreme prompt on sonnet suggests fable" "fable"
-assert_stderr_contains "extreme warn emits /effort suggestion" "/effort"
+assert_routes_to "extreme prompt on sonnet suggests opus" "opus"
+assert_stderr_contains "extreme warn emits /effort max" "/effort max"
 
 rm -rf "$HOME_DIR"
 
 # F2 / AC-1.4: on a TIER CHANGE the [1m] suffix belongs to the old tier and is
-# dropped, so the suggestion is the bare new alias (never "fable[1m]"); it still
-# carries /effort. The warn line reads "/model fable and /effort ..." so the
-# needle "/model fable and" fails if the suffix were reattached ("fable[1m] and").
+# dropped, so the suggestion is the bare new alias (never "opus[1m]"); it still
+# carries /effort. The warn line reads "/model opus and /effort ..." so the
+# needle "/model opus and" fails if the suffix were reattached ("opus[1m] and").
 HOME_1M=$(make_home "sonnet[1m]")
 
 run_hook "$EXTREME_PROMPT" "$HOME_1M"
-assert_stderr_contains "tier change drops [1m] suffix from /model fable" "/model fable and"
+assert_stderr_contains "tier change drops [1m] suffix from /model opus" "/model opus and"
 assert_stderr_contains "tier-change suggestion still carries /effort" "/effort"
 
 rm -rf "$HOME_1M"
@@ -548,9 +549,9 @@ assert_settings "autoswitch writes model+effortLevel, preserves foreign key" "$H
 
 rm -rf "$HOME_AS" "$PROJ_CLEAN"
 
-# ── Suite 12: Fable autoswitch gate off -> warn, no write (FR-11, AC-3.3) ─────
+# ── Suite 12: session-only max and custom Fable safety gates ─────────────────
 echo ""
-echo "--- Suite 12: Fable autoswitch gated off warns without writing ---"
+echo "--- Suite 12: Max effort and Fable autoswitch stay non-persistent ---"
 
 AS_EXTREME_PROMPT="write an rfc design doc for the distributed architecture and evaluate the tradeoffs"
 
@@ -559,8 +560,17 @@ PROJ_CLEAN=$(mktemp -d)
 FG_BEFORE=$(cat "$HOME_FG/.claude/settings.json")
 
 run_hook "$AS_EXTREME_PROMPT" "$HOME_FG" "$PROJ_CLEAN"
-assert_routes_to "fable decision with gate off warns instead of writing" "fable"
-assert_settings_unchanged "fable gate off leaves settings.json unwritten" "$HOME_FG" "$FG_BEFORE"
+assert_routes_to "max effort decision warns instead of persisting xhigh" "opus"
+assert_stderr_contains "max effort warning explains why no settings write occurred" "session-only"
+assert_settings_unchanged "max effort leaves settings.json unwritten" "$HOME_FG" "$FG_BEFORE"
+
+# Fable remains a supported explicit target, but it never gets autoswitched
+# unless the user opts in. This guards custom configurations independently of
+# the new Opus-max default.
+printf '{"version":2,"apply_mode":"autoswitch","allow_fable_autoswitch":false,"classifier":{"cli_fallback":false},"classes":{"extreme":{"target":{"model":"fable","effort":"high"}}}}' > "$HOME_FG/.claude/model-router.json"
+run_hook "$AS_EXTREME_PROMPT" "$HOME_FG" "$PROJ_CLEAN"
+assert_routes_to "custom fable target with gate off warns instead of writing" "fable"
+assert_settings_unchanged "custom fable gate leaves settings.json unwritten" "$HOME_FG" "$FG_BEFORE"
 
 rm -rf "$HOME_FG" "$PROJ_CLEAN"
 
