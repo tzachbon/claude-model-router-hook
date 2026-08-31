@@ -4,7 +4,7 @@ Actionable implementation tasks: 4. Final verification checkpoint: 1 (Task 5; no
 
 Only these implementation files are in scope: `tests/test_variants.py`, `plugins/claude-model-router-hook/hooks/router/variants.py`, and `scripts/generate_variants.py`.
 
-- [ ] 1. Port the retained all-or-nothing symlink regression
+- [x] 1. Port the retained all-or-nothing symlink regression
   - **Files**: `tests/test_variants.py`
   - **Do**: Port the retained `preflight-all-or-nothing` regression into `TestVariantGenerator`: make a wanted `routed-opus-high.md` a symlink to a regular outside file; keep a drifting safe wanted sibling and a safe generated stale sibling that would otherwise be pruned. Snapshot both safe siblings, then assert the generator fails, reports the unsafe candidate, leaves both snapshots unchanged, and leaves the symlink intact.
   - **Done when**: The focused test is red on the current generator, proving the exact sibling-mutation regression before production changes.

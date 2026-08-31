@@ -616,6 +616,47 @@ class TestVariantGenerator(unittest.TestCase):
             with open(target) as fh:
                 self.assertIn("router-generated: true", fh.read())
 
+    def test_unsafe_wanted_symlink_leaves_safe_sibling_unchanged(self):
+        """All candidate paths must be safe before any sibling is changed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = os.path.join(tmp, "agents")
+            os.makedirs(agents)
+            wanted = os.path.join(agents, "routed-haiku.md")
+            wanted_before = variants.agent_markdown(
+                "routed-haiku", "haiku", None, ("mechanical",)
+            ).replace("do not delegate it.", "safe wanted sibling must not change.")
+            with open(wanted, "w") as fh:
+                fh.write(wanted_before)
+            stale = os.path.join(agents, "routed-fable-high.md")
+            stale_before = variants.agent_markdown(
+                "routed-fable-high", "fable", "high", ("extreme",)
+            )
+            with open(stale, "w") as fh:
+                fh.write(stale_before)
+            outside = os.path.join(tmp, "outside-routed-opus-high.md")
+            with open(outside, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-opus-high", "opus", "high", ("debugging",)
+                ))
+            unsafe = os.path.join(agents, "routed-opus-high.md")
+            os.symlink(outside, unsafe)
+
+            proc = self._run("--agents-dir", agents)
+
+            with open(wanted) as fh:
+                self.assertEqual(
+                    fh.read(), wanted_before,
+                    "unsafe wanted symlink changed safe wanted sibling",
+                )
+            with open(stale) as fh:
+                self.assertEqual(
+                    fh.read(), stale_before,
+                    "unsafe wanted symlink pruned safe stale sibling",
+                )
+            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+            self.assertIn("UNSAFE: routed-opus-high.md", proc.stdout)
+            self.assertTrue(os.path.islink(unsafe))
+
     def test_prune_spares_a_file_that_merely_quotes_the_description(self):
         with tempfile.TemporaryDirectory() as agents:
             notes = os.path.join(agents, "routed-zach-notes.md")
