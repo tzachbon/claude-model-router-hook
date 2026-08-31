@@ -890,6 +890,57 @@ class TestInstallScript(unittest.TestCase):
             with open(handwritten) as fh:
                 self.assertEqual(fh.read(), original)
 
+    def test_generator_failure_leaves_the_live_tree_unchanged(self):
+        """A failed staged install must not alter any live Claude files."""
+        with tempfile.TemporaryDirectory() as home:
+            claude = os.path.join(home, ".claude")
+
+            def snapshot():
+                directories = []
+                files = {}
+                for directory, subdirectories, filenames in os.walk(claude):
+                    subdirectories.sort()
+                    filenames.sort()
+                    directories.append(os.path.relpath(directory, claude))
+                    for filename in filenames:
+                        path = os.path.join(directory, filename)
+                        with open(path, "rb") as fh:
+                            files[os.path.relpath(path, claude)] = fh.read()
+                return directories, files
+
+            sentinels = {
+                "hooks/router/sentinel.py": b"router-before\x00",
+                "hooks/session_init.py": b"session-init-before",
+                "hooks/user_prompt_submit.py": b"user-prompt-before",
+                "hooks/pre_tool_use.py": b"pre-tool-before",
+                "hooks/post_tool_use.py": b"post-tool-before",
+                "schema/model-router.schema.json": b"schema-before",
+                "agents/research-notes.md": b"ordinary-agent-before",
+                "agents/.user-data/nested/keep.bin": b"hidden-nested-before",
+                "agents/routed-haiku.md": b"---\nname: routed-haiku\n---\n\nhandwritten\n",
+                "agents/routed-fable-high.md": variants.agent_markdown(
+                    "routed-fable-high", "fable", "high", ("extreme",)
+                ).encode("utf-8"),
+            }
+            for relative, contents in sentinels.items():
+                path = os.path.join(claude, relative)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as fh:
+                    fh.write(contents)
+
+            before = snapshot()
+            env = dict(os.environ)
+            env["HOME"] = home
+            proc = subprocess.run(
+                ["bash", MANUAL_INSTALLER],
+                capture_output=True, text=True, env=env,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("CONFLICT", proc.stdout)
+            self.assertNotIn("Then restart Claude Code.", proc.stdout)
+            self.assertEqual(snapshot(), before)
+
     def test_failed_install_does_not_reinstate_a_rejected_tier(self):
         """The old fallback copied the DEFAULTS set, reintroducing sonnet."""
         with tempfile.TemporaryDirectory() as home:

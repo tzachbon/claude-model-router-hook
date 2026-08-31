@@ -6,7 +6,7 @@
 - Assign a separate executor to each implementation task (1–3). Task 4 is the shared verification checkpoint.
 - Keep the guarantee narrow: generation failure is all-or-nothing; post-generation publish failures get no new rollback behavior.
 
-- [ ] 1. Add the red full-tree failure regression
+- [x] 1. Add the red full-tree failure regression
 
 **Executor:** dedicated test executor  
 **Files:** `tests/test_variants.py` (`TestInstallScript`)
