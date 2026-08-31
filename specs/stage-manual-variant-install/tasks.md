@@ -41,7 +41,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 **Commit:** `fix(install): stage variants before publishing`
 
-- [ ] 3. Cover successful preservation of unrelated agents
+- [x] 3. Cover successful preservation of unrelated agents
 
 **Executor:** dedicated test executor  
 **Files:** `tests/test_variants.py` (`TestInstallScript`)

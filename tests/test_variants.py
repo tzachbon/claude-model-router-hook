@@ -849,6 +849,16 @@ class TestInstallScript(unittest.TestCase):
                     "debugging": {"target": {"model": "opus", "effort": "high"}},
                 },
             })
+            agents = os.path.join(home, ".claude", "agents")
+            preserved = {
+                "research-notes.md": b"ordinary-agent-before\\x00",
+                ".user-data/nested/keep.bin": b"hidden-nested-before\\xff",
+            }
+            for relative, contents in preserved.items():
+                path = os.path.join(agents, relative)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as fh:
+                    fh.write(contents)
             env = dict(os.environ)
             env["HOME"] = home
             proc = subprocess.run(
@@ -860,13 +870,17 @@ class TestInstallScript(unittest.TestCase):
                 os.path.join(home, ".claude", "hooks", "post_tool_use.py")
             ))
             self.assertIn("Under 'PostToolUse'", proc.stdout)
-            installed = sorted(os.listdir(os.path.join(home, ".claude", "agents")))
+            installed = sorted(os.listdir(agents))
             self.assertEqual(
                 installed,
-                ["routed-haiku.md", "routed-opus-high.md",
+                [".user-data", "research-notes.md", "routed-haiku.md",
+                 "routed-opus-high.md",
                  "routed-opus-max.md", "routed-opus-medium.md",
                  "routed-opus-xhigh.md"],
             )
+            for relative, contents in preserved.items():
+                with open(os.path.join(agents, relative), "rb") as fh:
+                    self.assertEqual(fh.read(), contents, relative)
 
     def test_generator_conflict_aborts_the_install(self):
         """A hand-written agent file stops the install rather than being eaten."""
