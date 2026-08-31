@@ -8,7 +8,7 @@
 
 - [x] 1. Add the red full-tree failure regression
 
-**Executor:** dedicated test executor  
+**Executor:** dedicated test executor
 **Files:** `tests/test_variants.py` (`TestInstallScript`)
 
 - Replace/upgrade the conflict regression with `test_generator_failure_leaves_the_live_tree_unchanged` at the direct manual-installer seam.
@@ -25,7 +25,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 - [x] 2. Stage generation before live publication
 
-**Executor:** dedicated installer executor  
+**Executor:** dedicated installer executor
 **Files:** `plugins/claude-model-router-hook/install.sh`
 
 - Before any live `mkdir`, `rm`, or `cp`, create an external `mktemp -d` stage, install an `EXIT` cleanup trap, create its `agents` directory, and copy existing `"$AGENTS_DIR/."` contents into it only when the live directory exists.
@@ -43,7 +43,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 - [x] 3. Cover successful preservation of unrelated agents
 
-**Executor:** dedicated test executor  
+**Executor:** dedicated test executor
 **Files:** `tests/test_variants.py` (`TestInstallScript`)
 
 - Extend `test_sonnet_free_config_installs_no_sonnet_agent` rather than adding another installer harness.
@@ -59,7 +59,7 @@ python3 tests/test_variants.py TestInstallScript.test_sonnet_free_config_install
 
 - [x] 4. [VERIFY] Verify the completed boundary
 
-**Executor:** verification runner  
+**Executor:** verification runner
 **Files:** none
 
 Run the direct installer suite, then the repository regression suite and whitespace check:
