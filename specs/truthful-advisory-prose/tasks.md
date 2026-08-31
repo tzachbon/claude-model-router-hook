@@ -21,7 +21,7 @@ table, or the tier-hint structure.
   - **Verify**: `python3 -m unittest tests.test_variants.TestAdvisoryMatchesEnforcement`
   - **Commit**: `fix(advisory): suppress unroutable fable routing hint`
 
-- [ ] 3. [VERIFY] Run the focused variants suite
+- [x] 3. [VERIFY] Run the focused variants suite
   - **Files**: none
   - **Do**: Run the complete variants suite and whitespace check from the primary worktree.
   - **Done when**: The suite exits successfully, including the three advisory boundaries; only the existing root-environment permission skips may remain, and the diff is whitespace-clean.
