@@ -65,19 +65,10 @@ def _resolve_config(config, use_user_config):
         return copy.deepcopy(config.DEFAULTS)
 
 
-def _read(path):
-    """File contents, or None when unreadable."""
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            return fh.read()
-    except OSError:
-        return None
-
-
 def _existing_router_files(agents_dir):
     try:
         names = os.listdir(agents_dir)
-    except OSError:
+    except FileNotFoundError:
         return {}
     found = {}
     for name in sorted(names):
@@ -120,19 +111,32 @@ def main(argv):
     for name, model, effort, classes in declared:
         wanted[name + ".md"] = variants.agent_markdown(name, model, effort, classes)
 
-    if not args.check:
-        os.makedirs(agents_dir, exist_ok=True)
+    try:
+        existing = _existing_router_files(agents_dir)
+    except (OSError, ValueError):
+        print("UNSAFE: agents directory (cannot list)")
+        return 1
 
-    existing = _existing_router_files(agents_dir)
-    drift = False
-    conflicts = []
-    failures = []
+    inspected = {}
+    unsafe = []
+    for filename in sorted(set(wanted) | set(existing)):
+        status, payload = variants.inspect_agent_file(
+            os.path.join(agents_dir, filename)
+        )
+        if status == "safe":
+            inspected[filename] = payload
+        elif status == "unsafe":
+            unsafe.append((filename, payload))
+    if unsafe:
+        for filename, reason in unsafe:
+            print("UNSAFE: " + filename + " (" + reason + ")")
+        return 1
 
+    actions = []
     for filename in sorted(wanted):
-        path = os.path.join(agents_dir, filename)
-        current = _read(path) if filename in existing else None
+        current = inspected.get(filename)
         if current == wanted[filename]:
-            print("OK: " + filename)
+            actions.append(("ok", filename))
             continue
         # Ownership is checked before writing, not only before deleting: a
         # wanted name can collide with a file a human wrote, and clobbering it
@@ -142,24 +146,47 @@ def main(argv):
             and not args.force
             and not variants.is_generated(current, filename)
         ):
+            actions.append(("conflict", filename))
+            continue
+        actions.append(("update" if current is not None else "create", filename))
+
+    for filename in sorted(existing):
+        if filename in wanted or filename not in inspected:
+            continue
+        if not args.force and not variants.is_generated(inspected[filename], filename):
+            actions.append(("skip", filename))
+            continue
+        actions.append(("remove", filename))
+
+    drift = False
+    conflicts = []
+    failures = []
+    made_agents_dir = False
+
+    for action, filename in actions:
+        path = os.path.join(agents_dir, filename)
+        if action == "ok":
+            print("OK: " + filename)
+            continue
+        if action == "conflict":
             print("CONFLICT (not router-generated, refusing to overwrite): " + filename)
             conflicts.append(filename)
             continue
-        drift = True
-        if args.check:
-            print(("DRIFT: " if current is not None else "MISSING: ") + filename)
-            continue
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(wanted[filename])
-        print(("UPDATED: " if current is not None else "CREATED: ") + filename)
-
-    for filename, path in existing.items():
-        if filename in wanted:
-            continue
-        if not args.force and not variants.is_generated(_read(path), filename):
+        if action == "skip":
             print("SKIP (not router-generated): " + filename)
             continue
         drift = True
+        if action in ("create", "update"):
+            if args.check:
+                print(("DRIFT: " if action == "update" else "MISSING: ") + filename)
+                continue
+            if not made_agents_dir:
+                os.makedirs(agents_dir, exist_ok=True)
+                made_agents_dir = True
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(wanted[filename])
+            print(("UPDATED: " if action == "update" else "CREATED: ") + filename)
+            continue
         if args.check:
             print("STALE: " + filename)
             continue

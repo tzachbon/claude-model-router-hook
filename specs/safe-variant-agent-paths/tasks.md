@@ -18,7 +18,7 @@ Only these implementation files are in scope: `tests/test_variants.py`, `plugins
   - **Verify**: `python3 tests/test_variants.py TestInstalledMeansUsable`
   - **Commit**: `fix(variants): reject unsafe routed-agent paths`
 
-- [ ] 3. Preflight every generator candidate before mutation
+- [x] 3. Preflight every generator candidate before mutation
   - **Files**: `scripts/generate_variants.py`
   - **Do**: Remove the conflating `_read()` path. Distinguish a missing agents directory from listing failures, inspect the sorted `wanted ∪ existing` set through the shared helper, and retain safe text while building the full action plan. On any unsafe candidate, emit deterministic `UNSAFE` diagnostics and return `1` before `makedirs`, writes, or removals. Apply the existing ownership, conflict, update, prune, `--force`, and `--check` behavior only to the fully safe plan.
   - **Done when**: An unsafe wanted or stale routed file cannot update, remove, replace, or create any sibling; safe ordinary generated and foreign-file semantics remain unchanged.
