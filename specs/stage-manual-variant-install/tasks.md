@@ -23,7 +23,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 **Commit:** `test(variants): cover atomic manual installer failure`
 
-- [ ] 2. Stage generation before live publication
+- [x] 2. Stage generation before live publication
 
 **Executor:** dedicated installer executor  
 **Files:** `plugins/claude-model-router-hook/install.sh`
