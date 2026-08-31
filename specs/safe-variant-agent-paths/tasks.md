@@ -25,7 +25,7 @@ Only these implementation files are in scope: `tests/test_variants.py`, `plugins
   - **Verify**: `python3 tests/test_variants.py TestVariantGenerator.test_unsafe_wanted_symlink_leaves_safe_sibling_unchanged`
   - **Commit**: `fix(generator): preflight routed-agent mutations`
 
-- [ ] 4. Cover the remaining unsafe-path and mode matrix
+- [x] 4. Cover the remaining unsafe-path and mode matrix
   - **Files**: `tests/test_variants.py`
   - **Do**: Add compact `subTest` coverage for regular-file symlinks, directories/non-regular paths, unreadable ordinary files (using the existing non-root skip), and invalid UTF-8 in both wanted and stale positions. Run each applicable generator case normally and with `--force`; assert rejected `--check` plans do not create, write, remove, or replace paths, and safe `--check` drift does not create a missing agents directory. Keep the ordinary generated update/prune/`--force` cases and the full `is_installed()` unsafe matrix passing.
   - **Done when**: Every unsafe case fails closed in the generator and yields `is_installed() == False`; ordinary safe-file update, prune, force, and check behavior remains green.
