@@ -14,7 +14,7 @@ table, or the tier-hint structure.
   - **Verify**: `python3 -m unittest tests.test_variants.TestAdvisoryMatchesEnforcement` (expects exactly the all-unroutable Fable regression to fail before Task 2)
   - **Commit**: `test(advisory): cover truthful fable guidance`
 
-- [ ] 2. Suppress only the all-unroutable Fable directive
+- [x] 2. Suppress only the all-unroutable Fable directive
   - **Files**: `plugins/claude-model-router-hook/hooks/router/advisory.py`
   - **Do**: In `_tier_hint()`, after matching `fable` and before clause rendering, return `You are currently on fable.` when `not any(targets.values())`. Base the guard only on the existing resolved-target map. Leave `_SELECTION_CLAUSES`, `resolved_targets()`, routing policy, the advisory table, and the current Fable lead untouched for any config with at least one resolved target.
   - **Done when**: The all-unroutable Fable regression turns green; the debugging-only table/prose regression and partially-routable Fable directive remain green.
