@@ -11,7 +11,7 @@ Only these implementation files are in scope: `tests/test_variants.py`, `plugins
   - **Verify**: `python3 tests/test_variants.py TestVariantGenerator.test_unsafe_wanted_symlink_leaves_safe_sibling_unchanged` (expects non-zero before Task 3)
   - **Commit**: `test(variants): add all-or-nothing symlink regression`
 
-- [ ] 2. Add the shared routed-agent inspector and use it for installed-ness
+- [x] 2. Add the shared routed-agent inspector and use it for installed-ness
   - **Files**: `plugins/claude-model-router-hook/hooks/router/variants.py`, `tests/test_variants.py`
   - **Do**: Add one small stdlib-only inspector returning absent, safe decoded text, or unsafe reason. Use `os.lstat` plus `stat.S_ISLNK`/`stat.S_ISREG`; only `FileNotFoundError` is absent, and every other inspect/read/decode failure is unsafe. Make `is_installed()` use it before `is_generated()`. Add the missing regular-file-symlink regression while retaining normal generated-file coverage and the existing permission skip.
   - **Done when**: `is_installed()` returns `False` for a symlink to an otherwise valid generated file, and still returns `True` for a safe ordinary generated file.

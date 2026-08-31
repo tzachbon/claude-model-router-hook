@@ -19,6 +19,7 @@ matching a pre-key rendering) are ever overwritten or pruned.
 import os
 import pathlib
 import re
+import stat
 
 from .ladder import EFFORTS, TIERS
 from .policy import gate_outcomes, target_for_class
@@ -233,6 +234,27 @@ def _frontmatter_flag(text):
     return False
 
 
+def inspect_agent_file(path):
+    """Return (status, payload) for a routed-agent path without following links."""
+    try:
+        mode = os.lstat(path).st_mode
+    except FileNotFoundError:
+        return "absent", None
+    except (OSError, ValueError):
+        return "unsafe", "cannot inspect"
+    if stat.S_ISLNK(mode):
+        return "unsafe", "symlink"
+    if not stat.S_ISREG(mode):
+        return "unsafe", "not regular"
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return "safe", fh.read()
+    except UnicodeDecodeError:
+        return "unsafe", "invalid UTF-8"
+    except (OSError, ValueError):
+        return "unsafe", "cannot read"
+
+
 def is_installed(directory, name):
     """True when `directory` holds a usable generated agent file for `name`.
 
@@ -246,15 +268,12 @@ def is_installed(directory, name):
     """
     if not directory:
         return False
-    path = os.path.join(directory, name + ".md")
     try:
-        if not os.path.isfile(path):  # follows symlinks; dirs and dangling links out
-            return False
-        with open(path, "r", encoding="utf-8") as fh:
-            text = fh.read()
-    except (OSError, ValueError, UnicodeDecodeError):
+        path = os.path.join(directory, name + ".md")
+    except (TypeError, ValueError):
         return False
-    return is_generated(text, name + ".md")
+    status, text = inspect_agent_file(path)
+    return status == "safe" and is_generated(text, name + ".md")
 
 
 def installed_names(agent_dirs, names):

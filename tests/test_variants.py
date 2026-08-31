@@ -1284,6 +1284,16 @@ class TestInstalledMeansUsable(unittest.TestCase):
             os.symlink(target, os.path.join(agents, "routed-haiku.md"))
             self.assertFalse(variants.is_installed(agents, "routed-haiku"))
 
+    def test_symlink_to_a_generated_file_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            target = os.path.join(tmp, "generated.md")
+            with open(target, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)))
+            os.symlink(target, os.path.join(agents, "routed-haiku.md"))
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
     def test_dangling_symlink_is_not_installed(self):
         with tempfile.TemporaryDirectory() as tmp:
             agents = self._agents(tmp)
