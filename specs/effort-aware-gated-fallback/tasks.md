@@ -7,7 +7,7 @@ Only `tests/test_variants.py` and
 the designated implementation early return, existing `CLASSES` order, normal
 routing, and gate behavior unchanged.
 
-- [ ] 1. Port the focused fallback regressions
+- [x] 1. Port the focused fallback regressions
   - **Files**: `tests/test_variants.py` (`TestMinGatedTarget`)
   - **Do**: Port the retained prototype's three direct cases: with haiku implementation, debugging `opus/max`, and architecture `opus/low`, require `("opus", "low")`; with a raw non-haiku target whose effort is missing beside a later `opus/max`, require the explicit-effort target without raising; with that missing-effort target alone, require the original `(model, None)` result without raising. Keep the tests at the direct `min_gated_target()` seam.
   - **Done when**: Before the production change, the focused class has the two intentional ordering failures (tier-only `opus/max` selection and missing-effort preference), while the lone missing-effort safety case documents the preserved no-raise behavior.

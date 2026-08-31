@@ -1111,6 +1111,34 @@ class TestMinGatedTarget(unittest.TestCase):
         )
         self.assertEqual(min_gated_target(cfg), ("opus", "xhigh"))
 
+    def test_walk_prefers_lower_effort_on_the_same_tier(self):
+        cfg = _cfg(
+            implementation={"model": "haiku"},
+            debugging={"model": "opus", "effort": "max"},
+            architecture={"model": "opus", "effort": "low"},
+            extreme={"model": "fable", "effort": "max"},
+        )
+        self.assertEqual(min_gated_target(cfg), ("opus", "low"))
+
+    def test_missing_effort_loses_to_a_ranked_target_without_raising(self):
+        cfg = {
+            "classes": {
+                "implementation": {"target": {"model": "haiku"}},
+                "debugging": {"target": {"model": "opus"}},
+                "architecture": {"target": {"model": "opus", "effort": "max"}},
+            },
+        }
+        self.assertEqual(min_gated_target(cfg), ("opus", "max"))
+
+    def test_only_missing_effort_target_does_not_raise(self):
+        cfg = {
+            "classes": {
+                "implementation": {"target": {"model": "haiku"}},
+                "debugging": {"target": {"model": "opus"}},
+            },
+        }
+        self.assertEqual(min_gated_target(cfg), ("opus", None))
+
     def test_all_haiku_config_has_nothing_to_escalate_to(self):
         cfg = _cfg(
             implementation={"model": "haiku"}, debugging={"model": "haiku"},
