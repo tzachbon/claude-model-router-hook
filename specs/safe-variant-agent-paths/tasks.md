@@ -32,7 +32,7 @@ Only these implementation files are in scope: `tests/test_variants.py`, `plugins
   - **Verify**: `python3 tests/test_variants.py TestVariantGenerator TestInstalledMeansUsable`
   - **Commit**: `test(variants): cover unsafe routed-agent paths`
 
-- [ ] 5. [VERIFY] Run the focused variants suite
+- [x] 5. [VERIFY] Run the focused variants suite
   - **Files**: none
   - **Do**: Run the complete focused regression suite from the primary worktree.
   - **Done when**: The suite exits 0; only the existing permission-dependent unreadable-file skips may remain when tests run as root.
