@@ -14,7 +14,7 @@ routing, and gate behavior unchanged.
   - **Verify**: `python3 -m unittest tests.test_variants.TestMinGatedTarget` (expects the two ordering regressions to fail before Task 2)
   - **Commit**: `test(variants): cover effort-aware gated fallback`
 
-- [ ] 2. Rank non-haiku fallback candidates by tier and effort
+- [x] 2. Rank non-haiku fallback candidates by tier and effort
   - **Files**: `plugins/claude-model-router-hook/hooks/router/policy.py`
   - **Do**: Replace only `min_gated_target()`'s tier-only fallback condition with the inline strict key `(TIERS.index(model), effort is None, EFFORTS.index(effort or EFFORTS[0]))` for `other` and `best`. Keep the strict `<` replacement rule so equal keys retain the earlier `CLASSES` candidate; add no helper, normalization, or policy branch.
   - **Done when**: Task 1's three cases are green, a valid non-haiku implementation target still returns unchanged, and raw missing effort remains non-raising.

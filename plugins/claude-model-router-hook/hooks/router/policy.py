@@ -172,7 +172,15 @@ def min_gated_target(cfg):
         other = _class_target_pair(klass, cfg)
         if other is None or other[0] == "haiku":
             continue
-        if best is None or TIERS.index(other[0]) < TIERS.index(best[0]):
+        if best is None or (
+            TIERS.index(other[0]),
+            other[1] is None,
+            EFFORTS.index(other[1] or EFFORTS[0]),
+        ) < (
+            TIERS.index(best[0]),
+            best[1] is None,
+            EFFORTS.index(best[1] or EFFORTS[0]),
+        ):
             best = other
     return best
 
