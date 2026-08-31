@@ -21,7 +21,7 @@ routing, and gate behavior unchanged.
   - **Verify**: `python3 -m unittest tests.test_variants.TestMinGatedTarget`
   - **Commit**: `fix(policy): rank gated fallback by effort`
 
-- [ ] 3. [VERIFY] Run the complete variants suite and whitespace check
+- [x] 3. [VERIFY] Run the complete variants suite and whitespace check
   - **Files**: none
   - **Do**: Run the repository variants suite and confirm the final diff has no whitespace errors.
   - **Done when**: The suite exits 0, including the three fallback regressions; only existing environment-dependent permission skips may remain, and the diff check exits 0.
