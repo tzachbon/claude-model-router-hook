@@ -7,7 +7,7 @@ Only `plugins/claude-model-router-hook/hooks/router/advisory.py` and
 partially-routable Fable behavior; do not redesign routing policy, the advisory
 table, or the tier-hint structure.
 
-- [ ] 1. Port the direct advisory regressions
+- [x] 1. Port the direct advisory regressions
   - **Files**: `tests/test_variants.py` (`TestAdvisoryMatchesEnforcement`)
   - **Do**: Add the retained prototype's three cases at the enforcement/advisory seam: a debugging-only `opus`/`high` config must render both `| debugging | opus | high |` and `debugging to opus` without the no-routable text; `render_session_context("claude-fable-5", {"classes": None})` must keep `You are currently on fable.` while omitting `Reserve it for extreme` and `down the ladder`; a Fable session with the debugging-only resolved target must retain both existing Fable routing phrases. Name the focused tests for these three boundaries.
   - **Done when**: The debugging-only and partially-routable Fable tests are green on current code, and the all-unroutable Fable test is the one intentional red failure because the static directive is still rendered.

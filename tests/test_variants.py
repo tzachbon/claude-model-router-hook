@@ -237,6 +237,27 @@ class TestAdvisoryMatchesEnforcement(unittest.TestCase):
         self.assertIn("No class is routable under this config", rendered)
         self.assertNotIn("sonnet", rendered)
 
+    def test_debugging_only_config_keeps_its_routable_prose(self):
+        cfg = {"classes": {"debugging": {"target": {"model": "opus", "effort": "high"}}}}
+        rendered = render_advisory(cfg)
+        self.assertIn("| debugging | opus | high |", rendered)
+        self.assertIn("debugging to opus", rendered)
+        self.assertNotIn("No class is routable under this config", rendered)
+
+    def test_fable_hint_drops_directive_when_nothing_is_routable(self):
+        context = render_session_context("claude-fable-5", {"classes": None})
+        self.assertIn("You are currently on fable.", context)
+        self.assertNotIn("Reserve it for extreme", context)
+        self.assertNotIn("down the ladder", context)
+
+    def test_fable_hint_keeps_directive_when_a_class_is_routable(self):
+        cfg = {"classes": {"debugging": {"target": {"model": "opus", "effort": "high"}}}}
+        context = render_session_context("claude-fable-5", cfg)
+        self.assertIn(
+            "Reserve it for extreme, platform-scale work; route everything lighter down the ladder.",
+            context,
+        )
+
     def test_unroutable_architecture_still_yields_a_closing_sentence(self):
         cfg = copy.deepcopy(DEFAULTS)
         cfg["classes"]["architecture"]["target"] = {"model": "gpt-9"}
