@@ -57,7 +57,7 @@ python3 tests/test_variants.py TestInstallScript.test_sonnet_free_config_install
 
 **Commit:** `test(variants): preserve unrelated manual-install agents`
 
-- [ ] 4. [VERIFY] Verify the completed boundary
+- [x] 4. [VERIFY] Verify the completed boundary
 
 **Executor:** verification runner  
 **Files:** none
