@@ -6,7 +6,7 @@
 - Assign a separate executor to each implementation task (1–3). Task 4 is the shared verification checkpoint.
 - Keep the guarantee narrow: generation failure is all-or-nothing; post-generation publish failures get no new rollback behavior.
 
-## 1. Add the red full-tree failure regression
+- [ ] 1. Add the red full-tree failure regression
 
 **Executor:** dedicated test executor  
 **Files:** `tests/test_variants.py` (`TestInstallScript`)
@@ -23,7 +23,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 **Commit:** `test(variants): cover atomic manual installer failure`
 
-## 2. Stage generation before live publication
+- [ ] 2. Stage generation before live publication
 
 **Executor:** dedicated installer executor  
 **Files:** `plugins/claude-model-router-hook/install.sh`
@@ -41,7 +41,7 @@ python3 tests/test_variants.py TestInstallScript.test_generator_failure_leaves_t
 
 **Commit:** `fix(install): stage variants before publishing`
 
-## 3. Cover successful preservation of unrelated agents
+- [ ] 3. Cover successful preservation of unrelated agents
 
 **Executor:** dedicated test executor  
 **Files:** `tests/test_variants.py` (`TestInstallScript`)
@@ -57,7 +57,7 @@ python3 tests/test_variants.py TestInstallScript.test_sonnet_free_config_install
 
 **Commit:** `test(variants): preserve unrelated manual-install agents`
 
-## 4. Verify the completed boundary
+- [ ] 4. [VERIFY] Verify the completed boundary
 
 **Executor:** verification runner  
 **Files:** none
