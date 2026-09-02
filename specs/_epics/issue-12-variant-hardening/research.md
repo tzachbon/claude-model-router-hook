@@ -28,7 +28,7 @@ All four specs can ship alone. Run path safety before or alongside installer sta
 
 ## Minimal Regression Checks
 
-- Extend `tests/test_variants.py` with unreadable/write-only, unreadable-directory, symlink-to-regular, and non-regular routed target cases; assert both target bytes and sibling generated files stay unchanged on refusal, including `--force`.
+- Extend `tests/test_variants.py` with unreadable/write-only, unreadable-directory, symlink-to-regular, and non-regular routed-agent target cases; assert both target bytes and sibling generated files stay unchanged on refusal, including `--force`.
 - Snapshot hooks, schema, and agents before a manual-install conflict; assert byte-for-byte equality after the failed installer run.
 - Assert debugging-only advisory prose agrees with its table; assert all-unroutable Fable context contains no routing/down-ladder instruction.
 - Assert opus/low beats opus/max in the gated fallback and equal `(tier, effort)` candidates resolve by `CLASSES` order.

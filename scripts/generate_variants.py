@@ -28,6 +28,7 @@ stdlib only.
 import argparse
 import copy
 import os
+import stat
 import sys
 
 
@@ -74,8 +75,70 @@ def _existing_router_files(agents_dir):
     for name in sorted(names):
         if not name.startswith("routed-") or not name.endswith(".md"):
             continue
-        found[name] = os.path.join(agents_dir, name)
+        found[name] = name
     return found
+
+
+def _open_agents_dir(path, router_variants, create=False):
+    """Open the final agents directory without following a replacement link."""
+    directory = os.path.abspath(path)
+    parent, name = os.path.split(directory)
+    if not name:
+        raise OSError("agents directory must not be root")
+    try:
+        parent_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    except FileNotFoundError:
+        if not create:
+            return None
+        os.makedirs(parent, exist_ok=True)
+        parent_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    fd = None
+    try:
+        if not stat.S_ISDIR(os.fstat(parent_fd).st_mode):
+            raise NotADirectoryError(parent)
+        try:
+            fd = router_variants.open_agent_file(
+                name, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0), dir_fd=parent_fd
+            )
+        except FileNotFoundError:
+            if not create:
+                return None
+            os.mkdir(name, dir_fd=parent_fd)
+            fd = router_variants.open_agent_file(
+                name, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0), dir_fd=parent_fd
+            )
+        if not stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise NotADirectoryError(name)
+        result = fd
+        fd = None
+        return result
+    finally:
+        if fd is not None:
+            os.close(fd)
+        os.close(parent_fd)
+
+
+def _write_agent_file(router_variants, directory_fd, filename, contents, force, create):
+    """Write one regular routed-agent file through an already-open directory."""
+    flags = os.O_RDWR | getattr(os, "O_NONBLOCK", 0)
+    if create:
+        flags |= os.O_CREAT | os.O_EXCL
+    fd = router_variants.open_agent_file(filename, flags, dir_fd=directory_fd)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("not regular")
+        with os.fdopen(fd, "w" if create else "r+", encoding="utf-8") as fh:
+            fd = None
+            if not create:
+                current = fh.read()
+                if not force and not router_variants.is_generated(current, filename):
+                    raise ValueError("not router-generated")
+                fh.seek(0)
+                fh.truncate()
+            fh.write(contents)
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def main(argv):
@@ -111,8 +174,10 @@ def main(argv):
     for name, model, effort, classes in declared:
         wanted[name + ".md"] = variants.agent_markdown(name, model, effort, classes)
 
+    agents_fd = None
     try:
-        existing = _existing_router_files(agents_dir)
+        agents_fd = _open_agents_dir(agents_dir, variants)
+        existing = _existing_router_files(agents_fd) if agents_fd is not None else {}
     except (OSError, ValueError):
         print("UNSAFE: agents directory (cannot list)")
         return 1
@@ -120,8 +185,10 @@ def main(argv):
     inspected = {}
     unsafe = []
     for filename in sorted(set(wanted) | set(existing)):
-        status, payload = variants.inspect_agent_file(
-            os.path.join(agents_dir, filename)
+        status, payload = (
+            variants.inspect_agent_file(filename, dir_fd=agents_fd)
+            if agents_fd is not None
+            else ("absent", None)
         )
         if status == "safe":
             inspected[filename] = payload
@@ -130,6 +197,8 @@ def main(argv):
     if unsafe:
         for filename, reason in unsafe:
             print("UNSAFE: " + filename + " (" + reason + ")")
+        if agents_fd is not None:
+            os.close(agents_fd)
         return 1
 
     actions = []
@@ -161,10 +230,17 @@ def main(argv):
     drift = False
     conflicts = []
     failures = []
-    made_agents_dir = False
+
+    if not args.check and any(
+        action in ("create", "update", "remove") for action, _filename in actions
+    ) and agents_fd is None:
+        try:
+            agents_fd = _open_agents_dir(agents_dir, variants, create=True)
+        except (OSError, ValueError):
+            print("UNSAFE: agents directory (cannot open)")
+            return 1
 
     for action, filename in actions:
-        path = os.path.join(agents_dir, filename)
         if action == "ok":
             print("OK: " + filename)
             continue
@@ -180,24 +256,37 @@ def main(argv):
             if args.check:
                 print(("DRIFT: " if action == "update" else "MISSING: ") + filename)
                 continue
-            if not made_agents_dir:
-                os.makedirs(agents_dir, exist_ok=True)
-                made_agents_dir = True
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(wanted[filename])
+            try:
+                _write_agent_file(
+                    variants, agents_fd, filename, wanted[filename], args.force,
+                    action == "create"
+                )
+            except (OSError, UnicodeDecodeError, ValueError) as exc:
+                print("WRITE FAILED: " + filename + " (" + str(exc) + ")")
+                failures.append(filename)
+                break
             print(("UPDATED: " if action == "update" else "CREATED: ") + filename)
             continue
         if args.check:
             print("STALE: " + filename)
             continue
         try:
-            os.remove(path)
+            status, current = variants.inspect_agent_file(filename, dir_fd=agents_fd)
+            if status != "safe" or (
+                not args.force and not variants.is_generated(current, filename)
+            ):
+                raise OSError("changed since preflight")
+            os.unlink(filename, dir_fd=agents_fd)
             print("REMOVED: " + filename)
         except OSError as exc:
             # A stale variant that survives is a routing hazard, not a cosmetic
             # one: it stays selectable by name. Never report success.
             print("REMOVE FAILED: " + filename + " (" + str(exc) + ")")
             failures.append(filename)
+            break
+
+    if agents_fd is not None:
+        os.close(agents_fd)
 
     if conflicts:
         print(

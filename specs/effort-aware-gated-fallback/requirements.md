@@ -18,9 +18,10 @@ does not spend more effort than necessary.
 - **FR-3 — Stable exact ties:** Candidates with the same `(tier, effort)` do
   not replace the earlier candidate; the fixed `CLASSES` iteration order is
   the strict deterministic tie-breaker.
-- **FR-4 — No invented target:** An all-haiku, malformed, or otherwise
-  targetless configuration still returns `None` without raising or selecting a
-  model absent from the configuration.
+- **FR-4 — No invented target:** An all-haiku or targetless malformed
+  configuration returns `None` without raising or selecting a model absent from
+  the configuration. A usable non-haiku target with missing effort returns
+  `(model, None)` without raising.
 
 ## Acceptance criteria
 

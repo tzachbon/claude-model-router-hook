@@ -33,6 +33,7 @@ Harden direct routed-agent variant generation in `scripts/generate_variants.py` 
 
 - Fail closed: absence is the sole writable state; every other inspection or decode failure is rejection.
 - Do not follow symlinks while deciding whether a routed-agent path is valid.
+- Execute mutations through an already-open agents-directory descriptor and refuse final-component symlinks, so replacement after preflight cannot redirect a mutation outside that directory.
 - Preflight must be deterministic and all-or-nothing with respect to generator mutations; a rejected path leaves sibling agents unchanged.
 - Failure output must identify the rejected candidate and why it is unsafe without attempting repair.
 

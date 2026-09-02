@@ -12,7 +12,7 @@ Make the plugin's manual installer run variant generation against a temporary co
 ## Target files
 
 - `plugins/claude-model-router-hook/install.sh`
-- `tests/test-install.sh`
+- `tests/test_variants.py` (`TestInstallScript`)
 
 ## Minimal approach
 
@@ -22,7 +22,7 @@ Use the shell's existing temporary-directory and copy tools to stage the current
 
 - A generator conflict leaves live hooks, schema, router files, and agents byte-for-byte unchanged.
 - Successful installation promotes the generated staged agents and preserves unrelated user agents.
-- `bash tests/test-install.sh` passes.
+- `python3 -m unittest tests.test_variants.TestInstallScript` passes.
 
 ## Ordering and dependencies
 

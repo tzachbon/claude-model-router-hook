@@ -16,6 +16,13 @@ SCHEMA_DIR="$CLAUDE_DIR/schema"
 
 echo "Installing claude-model-router-hook (v2) to $CLAUDE_DIR"
 
+if [ -e "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+    if [ ! -d "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+        echo "Refusing to replace non-directory agents path: $AGENTS_DIR" >&2
+        exit 1
+    fi
+fi
+
 STAGE="$(mktemp -d)"
 trap 'rm -rf -- "$STAGE"' EXIT
 STAGED_AGENTS="$STAGE/agents"
@@ -48,7 +55,13 @@ cp "$SCRIPT_DIR/hooks/post_tool_use.py"      "$HOOKS_DIR/post_tool_use.py"
 # Config schema (v1 + v2 shapes)
 cp "$REPO_ROOT/schema/model-router.schema.json" "$SCHEMA_DIR/model-router.schema.json"
 
-rm -rf -- "$AGENTS_DIR"
+if [ -e "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+    if [ ! -d "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+        echo "Refusing to replace non-directory agents path: $AGENTS_DIR" >&2
+        exit 1
+    fi
+    rm -rf -- "$AGENTS_DIR"
+fi
 cp -R "$STAGED_AGENTS" "$AGENTS_DIR"
 
 echo ""

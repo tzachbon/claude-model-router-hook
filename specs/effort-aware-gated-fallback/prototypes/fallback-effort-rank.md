@@ -55,7 +55,7 @@ The red probe had two expected failures: tier-only selection kept opus/max befor
 
 ## Verdict
 
-Validated. Treat a missing non-haiku effort as less preferable than any explicit valid effort; when it is the only candidate, retain the existing non-raising tuple.
+Validated. Treat a missing non-haiku effort as less preferable than any explicit valid effort; when it is the only candidate, retain the existing non-raising `(model, None)` result rather than `None`.
 
 ## Downstream Handoff
 

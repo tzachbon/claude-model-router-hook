@@ -29,6 +29,14 @@ AGENT_PREFIX = "routed-"
 
 OWNERSHIP_KEY = "router-generated"
 
+
+def open_agent_file(path, flags, mode=0o666, *, dir_fd=None):
+    """Open a routed-agent path without following its final symlink."""
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("O_NOFOLLOW is unavailable")
+    return os.open(path, flags | nofollow, mode, dir_fd=dir_fd)
+
 AGENT_DESCRIPTION = (
     "Router-managed variant for {classes} tasks. "
     "Spawned by the model router hook; do not invoke directly."
@@ -234,10 +242,10 @@ def _frontmatter_flag(text):
     return False
 
 
-def inspect_agent_file(path):
+def inspect_agent_file(path, *, dir_fd=None):
     """Return (status, payload) for a routed-agent path without following links."""
     try:
-        mode = os.lstat(path).st_mode
+        mode = os.lstat(path, dir_fd=dir_fd).st_mode
     except FileNotFoundError:
         return "absent", None
     except (OSError, ValueError):
@@ -247,12 +255,24 @@ def inspect_agent_file(path):
     if not stat.S_ISREG(mode):
         return "unsafe", "not regular"
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        fd = open_agent_file(
+            path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0), dir_fd=dir_fd
+        )
+    except (OSError, ValueError):
+        return "unsafe", "cannot read"
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return "unsafe", "not regular"
+        with os.fdopen(fd, "r", encoding="utf-8") as fh:
+            fd = None
             return "safe", fh.read()
     except UnicodeDecodeError:
         return "unsafe", "invalid UTF-8"
     except (OSError, ValueError):
         return "unsafe", "cannot read"
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def is_installed(directory, name):

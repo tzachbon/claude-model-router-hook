@@ -12,13 +12,17 @@ when the installed variant set is behind the config).
 """
 
 import copy
+import contextlib
+import importlib.util
 import itertools
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN_DIR = os.path.join(REPO_ROOT, "plugins", "claude-model-router-hook")
@@ -692,6 +696,71 @@ class TestVariantGenerator(unittest.TestCase):
             self.assertIn("UNSAFE: " + unsafe_name, proc.stdout)
             self.assertTrue(os.path.islink(unsafe))
 
+    def test_updates_a_changed_generated_file(self):
+        with tempfile.TemporaryDirectory() as agents:
+            target = os.path.join(agents, "routed-haiku.md")
+            with open(target, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)
+                ).replace("do not delegate it.", "outdated generated content."))
+
+            proc = self._run("--agents-dir", agents)
+
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("UPDATED: routed-haiku.md", proc.stdout)
+            with open(target) as fh:
+                self.assertEqual(fh.read(), variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)
+                ))
+
+    def test_replacement_after_preflight_cannot_write_through_a_symlink(self):
+        """A candidate swapped after preflight must not mutate its link target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = os.path.join(tmp, "agents")
+            os.makedirs(agents)
+            for name, model, effort, classes in variants.target_variants(
+                copy.deepcopy(DEFAULTS)
+            ):
+                contents = variants.agent_markdown(name, model, effort, classes)
+                if name == "routed-haiku":
+                    contents = contents.replace(
+                        "do not delegate it.", "preflight target must change."
+                    )
+                with open(os.path.join(agents, name + ".md"), "w") as fh:
+                    fh.write(contents)
+            target = os.path.join(agents, "routed-haiku.md")
+            outside = os.path.join(tmp, "outside.md")
+            outside_before = "outside must not change\n"
+            with open(outside, "w") as fh:
+                fh.write(outside_before)
+
+            inspected = variants.inspect_agent_file
+            replaced = False
+
+            def replace_after_preflight(path, *, dir_fd=None):
+                nonlocal replaced
+                status, payload = inspected(path, dir_fd=dir_fd)
+                if path == "routed-haiku.md" and not replaced:
+                    replaced = True
+                    os.unlink(target)
+                    os.symlink(outside, target)
+                return status, payload
+
+            spec = importlib.util.spec_from_file_location("generate_variants_race", GENERATOR)
+            generator = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(generator)
+            with io.StringIO() as output, contextlib.redirect_stdout(output), mock.patch.object(
+                variants, "inspect_agent_file", side_effect=replace_after_preflight
+            ):
+                self.assertEqual(generator.main([GENERATOR, "--agents-dir", agents]), 1)
+                output_text = output.getvalue()
+            self.assertIn("WRITE FAILED: routed-haiku.md", output_text)
+
+            self.assertTrue(replaced)
+            self.assertTrue(os.path.islink(target))
+            with open(outside) as fh:
+                self.assertEqual(fh.read(), outside_before)
+
     def test_unsafe_candidates_fail_closed_in_default_and_force_modes(self):
         cases = (
             ("regular-file symlink", "symlink"),
@@ -924,6 +993,40 @@ class TestInstallScript(unittest.TestCase):
             self.assertNotIn("Then restart Claude Code", proc.stdout)
             with open(handwritten) as fh:
                 self.assertEqual(fh.read(), original)
+
+    def test_non_directory_agents_path_is_preserved(self):
+        for kind in ("file", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as home:
+                _write_home(home, {"version": 2})
+                agents = os.path.join(home, ".claude", "agents")
+                original = b"ordinary user data\x00"
+                if kind == "file":
+                    with open(agents, "wb") as fh:
+                        fh.write(original)
+                else:
+                    outside = os.path.join(home, "outside-agents")
+                    os.makedirs(outside)
+                    outside_file = os.path.join(outside, "keep.md")
+                    with open(outside_file, "wb") as fh:
+                        fh.write(original)
+                    os.symlink(outside, agents)
+                env = dict(os.environ)
+                env["HOME"] = home
+
+                proc = subprocess.run(
+                    ["bash", MANUAL_INSTALLER], capture_output=True, text=True, env=env
+                )
+
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("Refusing to replace non-directory agents path", proc.stderr)
+                self.assertFalse(os.path.exists(os.path.join(home, ".claude", "hooks")))
+                if kind == "file":
+                    with open(agents, "rb") as fh:
+                        self.assertEqual(fh.read(), original)
+                else:
+                    self.assertTrue(os.path.islink(agents))
+                    with open(outside_file, "rb") as fh:
+                        self.assertEqual(fh.read(), original)
 
     def test_generator_failure_leaves_the_live_tree_unchanged(self):
         """A failed staged install must not alter any live Claude files."""
