@@ -764,6 +764,7 @@ class TestVariantGenerator(unittest.TestCase):
     def test_unsafe_candidates_fail_closed_in_default_and_force_modes(self):
         cases = (
             ("regular-file symlink", "symlink"),
+            ("dangling symlink", "symlink"),
             ("directory", "not regular"),
             ("invalid UTF-8", "invalid UTF-8"),
         )
@@ -780,6 +781,9 @@ class TestVariantGenerator(unittest.TestCase):
                                 outside_before = "outside must not change\n"
                                 with open(outside, "w") as fh:
                                     fh.write(outside_before)
+                                os.symlink(outside, unsafe)
+                            elif kind == "dangling symlink":
+                                outside = os.path.join(tmp, "missing-outside.md")
                                 os.symlink(outside, unsafe)
                             elif kind == "directory":
                                 os.makedirs(unsafe)
@@ -799,6 +803,9 @@ class TestVariantGenerator(unittest.TestCase):
                                 self.assertTrue(os.path.islink(unsafe))
                                 with open(outside) as fh:
                                     self.assertEqual(fh.read(), outside_before)
+                            elif kind == "dangling symlink":
+                                self.assertTrue(os.path.islink(unsafe))
+                                self.assertFalse(os.path.exists(outside))
                             elif kind == "directory":
                                 self.assertTrue(os.path.isdir(unsafe))
                             else:
