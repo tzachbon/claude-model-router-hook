@@ -16,7 +16,31 @@ SCHEMA_DIR="$CLAUDE_DIR/schema"
 
 echo "Installing claude-model-router-hook (v2) to $CLAUDE_DIR"
 
-mkdir -p "$HOOKS_DIR" "$AGENTS_DIR" "$SCHEMA_DIR"
+if [ -e "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+    if [ ! -d "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+        echo "Refusing to replace non-directory agents path: $AGENTS_DIR" >&2
+        exit 1
+    fi
+fi
+
+STAGE="$(mktemp -d)"
+trap 'rm -rf -- "$STAGE"' EXIT
+STAGED_AGENTS="$STAGE/agents"
+mkdir -p "$STAGED_AGENTS"
+if [ -d "$AGENTS_DIR" ]; then
+    cp -R "$AGENTS_DIR/." "$STAGED_AGENTS/"
+fi
+
+# Routed agent variants, generated from the resolved config so only tiers the
+# config actually targets get an agent file. A failure here aborts the install
+# (set -e): the obvious fallback, copying the committed DEFAULTS set, would
+# reinstall variants for tiers this config rejects, which is the bug the
+# generator exists to prevent. A conflict with a hand-written agent file is
+# reported by name and is the user's call to resolve.
+python3 "$REPO_ROOT/scripts/generate_variants.py" \
+    --agents-dir "$STAGED_AGENTS" --use-user-config
+
+mkdir -p "$HOOKS_DIR" "$SCHEMA_DIR"
 
 # Router package
 rm -rf "$HOOKS_DIR/router"
@@ -28,17 +52,17 @@ cp "$SCRIPT_DIR/hooks/user_prompt_submit.py" "$HOOKS_DIR/user_prompt_submit.py"
 cp "$SCRIPT_DIR/hooks/pre_tool_use.py"       "$HOOKS_DIR/pre_tool_use.py"
 cp "$SCRIPT_DIR/hooks/post_tool_use.py"      "$HOOKS_DIR/post_tool_use.py"
 
-# Routed agent variants, generated from the resolved config so only tiers the
-# config actually targets get an agent file. A failure here aborts the install
-# (set -e): the obvious fallback, copying the committed DEFAULTS set, would
-# reinstall variants for tiers this config rejects, which is the bug the
-# generator exists to prevent. A conflict with a hand-written agent file is
-# reported by name and is the user's call to resolve.
-python3 "$REPO_ROOT/scripts/generate_variants.py" \
-    --agents-dir "$AGENTS_DIR" --use-user-config
-
 # Config schema (v1 + v2 shapes)
 cp "$REPO_ROOT/schema/model-router.schema.json" "$SCHEMA_DIR/model-router.schema.json"
+
+if [ -e "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+    if [ ! -d "$AGENTS_DIR" ] || [ -L "$AGENTS_DIR" ]; then
+        echo "Refusing to replace non-directory agents path: $AGENTS_DIR" >&2
+        exit 1
+    fi
+    rm -rf -- "$AGENTS_DIR"
+fi
+cp -R "$STAGED_AGENTS" "$AGENTS_DIR"
 
 echo ""
 echo "Installed:"

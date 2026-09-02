@@ -227,6 +227,8 @@ def _tier_hint(current_model, targets):
     for tier, lead, clauses in _TIER_HINTS:
         if tier not in lower:
             continue
+        if tier == "fable" and not any(targets.values()):
+            return "You are currently on fable."
         rendered = [
             template.format(model=targets[klass][0])
             for klass, template in clauses

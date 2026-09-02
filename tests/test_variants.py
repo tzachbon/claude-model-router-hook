@@ -12,13 +12,17 @@ when the installed variant set is behind the config).
 """
 
 import copy
+import contextlib
+import importlib.util
 import itertools
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN_DIR = os.path.join(REPO_ROOT, "plugins", "claude-model-router-hook")
@@ -236,6 +240,27 @@ class TestAdvisoryMatchesEnforcement(unittest.TestCase):
             self.assertIn("| %s | (no routing) | - |" % klass, rendered)
         self.assertIn("No class is routable under this config", rendered)
         self.assertNotIn("sonnet", rendered)
+
+    def test_debugging_only_config_keeps_its_routable_prose(self):
+        cfg = {"classes": {"debugging": {"target": {"model": "opus", "effort": "high"}}}}
+        rendered = render_advisory(cfg)
+        self.assertIn("| debugging | opus | high |", rendered)
+        self.assertIn("debugging to opus", rendered)
+        self.assertNotIn("No class is routable under this config", rendered)
+
+    def test_fable_hint_drops_directive_when_nothing_is_routable(self):
+        context = render_session_context("claude-fable-5", {"classes": None})
+        self.assertIn("You are currently on fable.", context)
+        self.assertNotIn("Reserve it for extreme", context)
+        self.assertNotIn("down the ladder", context)
+
+    def test_fable_hint_keeps_directive_when_a_class_is_routable(self):
+        cfg = {"classes": {"debugging": {"target": {"model": "opus", "effort": "high"}}}}
+        context = render_session_context("claude-fable-5", cfg)
+        self.assertIn(
+            "Reserve it for extreme, platform-scale work; route everything lighter down the ladder.",
+            context,
+        )
 
     def test_unroutable_architecture_still_yields_a_closing_sentence(self):
         cfg = copy.deepcopy(DEFAULTS)
@@ -562,6 +587,43 @@ class TestVariantGenerator(unittest.TestCase):
             capture_output=True, text=True, env=run_env,
         )
 
+    def _preflight_fixture(self, tmp, unsafe_position):
+        """Safe siblings that would otherwise update and prune."""
+        agents = os.path.join(tmp, "agents")
+        os.makedirs(agents)
+        wanted = os.path.join(agents, "routed-haiku.md")
+        wanted_before = variants.agent_markdown(
+            "routed-haiku", "haiku", None, ("mechanical",)
+        ).replace("do not delegate it.", "safe wanted sibling must not change.")
+        with open(wanted, "w") as fh:
+            fh.write(wanted_before)
+
+        stale_name, stale_effort, stale_classes = (
+            ("routed-fable-high", "high", ("extreme",))
+            if unsafe_position == "wanted"
+            else ("routed-fable-medium", "medium", ("implementation",))
+        )
+        stale = os.path.join(agents, stale_name + ".md")
+        stale_before = variants.agent_markdown(
+            stale_name, "fable", stale_effort, stale_classes
+        )
+        with open(stale, "w") as fh:
+            fh.write(stale_before)
+
+        unsafe_name = (
+            "routed-opus-high.md"
+            if unsafe_position == "wanted"
+            else "routed-fable-high.md"
+        )
+        return agents, unsafe_name, os.path.join(agents, unsafe_name), (
+            (wanted, wanted_before), (stale, stale_before),
+        )
+
+    def _assert_siblings_unchanged(self, snapshots):
+        for path, before in snapshots:
+            with open(path) as fh:
+                self.assertEqual(fh.read(), before, path)
+
     def test_committed_set_is_in_sync(self):
         proc = self._run("--check")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -615,6 +677,166 @@ class TestVariantGenerator(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stdout)
             with open(target) as fh:
                 self.assertIn("router-generated: true", fh.read())
+
+    def test_unsafe_wanted_symlink_leaves_safe_sibling_unchanged(self):
+        """All candidate paths must be safe before any sibling is changed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents, unsafe_name, unsafe, snapshots = self._preflight_fixture(tmp, "wanted")
+            outside = os.path.join(tmp, "outside-routed-opus-high.md")
+            with open(outside, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-opus-high", "opus", "high", ("debugging",)
+                ))
+            os.symlink(outside, unsafe)
+
+            proc = self._run("--agents-dir", agents)
+
+            self._assert_siblings_unchanged(snapshots)
+            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+            self.assertIn("UNSAFE: " + unsafe_name, proc.stdout)
+            self.assertTrue(os.path.islink(unsafe))
+
+    def test_updates_a_changed_generated_file(self):
+        with tempfile.TemporaryDirectory() as agents:
+            target = os.path.join(agents, "routed-haiku.md")
+            with open(target, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)
+                ).replace("do not delegate it.", "outdated generated content."))
+
+            proc = self._run("--agents-dir", agents)
+
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("UPDATED: routed-haiku.md", proc.stdout)
+            with open(target) as fh:
+                self.assertEqual(fh.read(), variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)
+                ))
+
+    def test_replacement_after_preflight_cannot_write_through_a_symlink(self):
+        """A candidate swapped after preflight must not mutate its link target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = os.path.join(tmp, "agents")
+            os.makedirs(agents)
+            for name, model, effort, classes in variants.target_variants(
+                copy.deepcopy(DEFAULTS)
+            ):
+                contents = variants.agent_markdown(name, model, effort, classes)
+                if name == "routed-haiku":
+                    contents = contents.replace(
+                        "do not delegate it.", "preflight target must change."
+                    )
+                with open(os.path.join(agents, name + ".md"), "w") as fh:
+                    fh.write(contents)
+            target = os.path.join(agents, "routed-haiku.md")
+            outside = os.path.join(tmp, "outside.md")
+            outside_before = "outside must not change\n"
+            with open(outside, "w") as fh:
+                fh.write(outside_before)
+
+            inspected = variants.inspect_agent_file
+            replaced = False
+
+            def replace_after_preflight(path, *, dir_fd=None):
+                nonlocal replaced
+                status, payload = inspected(path, dir_fd=dir_fd)
+                if path == "routed-haiku.md" and not replaced:
+                    replaced = True
+                    os.unlink(target)
+                    os.symlink(outside, target)
+                return status, payload
+
+            spec = importlib.util.spec_from_file_location("generate_variants_race", GENERATOR)
+            generator = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(generator)
+            with io.StringIO() as output, contextlib.redirect_stdout(output), mock.patch.object(
+                variants, "inspect_agent_file", side_effect=replace_after_preflight
+            ):
+                self.assertEqual(generator.main([GENERATOR, "--agents-dir", agents]), 1)
+                output_text = output.getvalue()
+            self.assertIn("WRITE FAILED: routed-haiku.md", output_text)
+
+            self.assertTrue(replaced)
+            self.assertTrue(os.path.islink(target))
+            with open(outside) as fh:
+                self.assertEqual(fh.read(), outside_before)
+
+    def test_unsafe_candidates_fail_closed_in_default_and_force_modes(self):
+        cases = (
+            ("regular-file symlink", "symlink"),
+            ("dangling symlink", "symlink"),
+            ("directory", "not regular"),
+            ("invalid UTF-8", "invalid UTF-8"),
+        )
+        for position in ("wanted", "stale"):
+            for kind, reason in cases:
+                for mode, args in (("default", ()), ("force", ("--force",))):
+                    with self.subTest(position=position, kind=kind, mode=mode):
+                        with tempfile.TemporaryDirectory() as tmp:
+                            agents, unsafe_name, unsafe, snapshots = self._preflight_fixture(
+                                tmp, position
+                            )
+                            if kind == "regular-file symlink":
+                                outside = os.path.join(tmp, "outside.md")
+                                outside_before = "outside must not change\n"
+                                with open(outside, "w") as fh:
+                                    fh.write(outside_before)
+                                os.symlink(outside, unsafe)
+                            elif kind == "dangling symlink":
+                                outside = os.path.join(tmp, "missing-outside.md")
+                                os.symlink(outside, unsafe)
+                            elif kind == "directory":
+                                os.makedirs(unsafe)
+                            else:
+                                unsafe_before = b"\xff\xfe\x00not utf-8"
+                                with open(unsafe, "wb") as fh:
+                                    fh.write(unsafe_before)
+
+                            proc = self._run(*(args + ("--agents-dir", agents)))
+
+                            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                            self.assertIn(
+                                "UNSAFE: %s (%s)" % (unsafe_name, reason), proc.stdout
+                            )
+                            self._assert_siblings_unchanged(snapshots)
+                            if kind == "regular-file symlink":
+                                self.assertTrue(os.path.islink(unsafe))
+                                with open(outside) as fh:
+                                    self.assertEqual(fh.read(), outside_before)
+                            elif kind == "dangling symlink":
+                                self.assertTrue(os.path.islink(unsafe))
+                                self.assertFalse(os.path.exists(outside))
+                            elif kind == "directory":
+                                self.assertTrue(os.path.isdir(unsafe))
+                            else:
+                                with open(unsafe, "rb") as fh:
+                                    self.assertEqual(fh.read(), unsafe_before)
+
+    def test_unreadable_candidates_fail_closed_in_default_and_force_modes(self):
+        if os.geteuid() == 0:
+            self.skipTest("root ignores file permissions")
+        for position in ("wanted", "stale"):
+            for mode, args in (("default", ()), ("force", ("--force",))):
+                with self.subTest(position=position, mode=mode):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        agents, unsafe_name, unsafe, snapshots = self._preflight_fixture(
+                            tmp, position
+                        )
+                        with open(unsafe, "w") as fh:
+                            fh.write("ordinary unreadable file\n")
+                        os.chmod(unsafe, 0o000)
+                        try:
+                            proc = self._run(*(args + ("--agents-dir", agents)))
+                            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                            self.assertIn(
+                                "UNSAFE: %s (cannot read)" % unsafe_name, proc.stdout
+                            )
+                            self._assert_siblings_unchanged(snapshots)
+                            self.assertTrue(os.path.isfile(unsafe))
+                            self.assertFalse(os.path.islink(unsafe))
+                        finally:
+                            if os.path.isfile(unsafe) and not os.path.islink(unsafe):
+                                os.chmod(unsafe, 0o600)
 
     def test_prune_spares_a_file_that_merely_quotes_the_description(self):
         with tempfile.TemporaryDirectory() as agents:
@@ -674,11 +896,31 @@ class TestVariantGenerator(unittest.TestCase):
                 os.chmod(agents, 0o700)
 
     def test_check_mode_reports_drift_and_writes_nothing(self):
-        with tempfile.TemporaryDirectory() as agents:
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = os.path.join(tmp, "agents")
+            self.assertFalse(os.path.exists(agents))
             proc = self._run("--check", "--agents-dir", agents)
             self.assertEqual(proc.returncode, 1)
             self.assertIn("MISSING: routed-haiku.md", proc.stdout)
-            self.assertEqual(os.listdir(agents), [])
+            self.assertFalse(os.path.exists(agents))
+
+    def test_check_mode_rejects_without_writing_or_removing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents, unsafe_name, unsafe, snapshots = self._preflight_fixture(tmp, "wanted")
+            outside = os.path.join(tmp, "outside.md")
+            outside_before = "outside must not change\n"
+            with open(outside, "w") as fh:
+                fh.write(outside_before)
+            os.symlink(outside, unsafe)
+
+            proc = self._run("--check", "--agents-dir", agents)
+
+            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+            self.assertIn("UNSAFE: %s (symlink)" % unsafe_name, proc.stdout)
+            self._assert_siblings_unchanged(snapshots)
+            self.assertTrue(os.path.islink(unsafe))
+            with open(outside) as fh:
+                self.assertEqual(fh.read(), outside_before)
 
     def test_check_mode_reports_a_conflict_without_writing(self):
         with tempfile.TemporaryDirectory() as agents:
@@ -704,6 +946,16 @@ class TestInstallScript(unittest.TestCase):
                     "debugging": {"target": {"model": "opus", "effort": "high"}},
                 },
             })
+            agents = os.path.join(home, ".claude", "agents")
+            preserved = {
+                "research-notes.md": b"ordinary-agent-before\\x00",
+                ".user-data/nested/keep.bin": b"hidden-nested-before\\xff",
+            }
+            for relative, contents in preserved.items():
+                path = os.path.join(agents, relative)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as fh:
+                    fh.write(contents)
             env = dict(os.environ)
             env["HOME"] = home
             proc = subprocess.run(
@@ -715,13 +967,17 @@ class TestInstallScript(unittest.TestCase):
                 os.path.join(home, ".claude", "hooks", "post_tool_use.py")
             ))
             self.assertIn("Under 'PostToolUse'", proc.stdout)
-            installed = sorted(os.listdir(os.path.join(home, ".claude", "agents")))
+            installed = sorted(os.listdir(agents))
             self.assertEqual(
                 installed,
-                ["routed-haiku.md", "routed-opus-high.md",
+                [".user-data", "research-notes.md", "routed-haiku.md",
+                 "routed-opus-high.md",
                  "routed-opus-max.md", "routed-opus-medium.md",
                  "routed-opus-xhigh.md"],
             )
+            for relative, contents in preserved.items():
+                with open(os.path.join(agents, relative), "rb") as fh:
+                    self.assertEqual(fh.read(), contents, relative)
 
     def test_generator_conflict_aborts_the_install(self):
         """A hand-written agent file stops the install rather than being eaten."""
@@ -744,6 +1000,91 @@ class TestInstallScript(unittest.TestCase):
             self.assertNotIn("Then restart Claude Code", proc.stdout)
             with open(handwritten) as fh:
                 self.assertEqual(fh.read(), original)
+
+    def test_non_directory_agents_path_is_preserved(self):
+        for kind in ("file", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as home:
+                _write_home(home, {"version": 2})
+                agents = os.path.join(home, ".claude", "agents")
+                original = b"ordinary user data\x00"
+                if kind == "file":
+                    with open(agents, "wb") as fh:
+                        fh.write(original)
+                else:
+                    outside = os.path.join(home, "outside-agents")
+                    os.makedirs(outside)
+                    outside_file = os.path.join(outside, "keep.md")
+                    with open(outside_file, "wb") as fh:
+                        fh.write(original)
+                    os.symlink(outside, agents)
+                env = dict(os.environ)
+                env["HOME"] = home
+
+                proc = subprocess.run(
+                    ["bash", MANUAL_INSTALLER], capture_output=True, text=True, env=env
+                )
+
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("Refusing to replace non-directory agents path", proc.stderr)
+                self.assertFalse(os.path.exists(os.path.join(home, ".claude", "hooks")))
+                if kind == "file":
+                    with open(agents, "rb") as fh:
+                        self.assertEqual(fh.read(), original)
+                else:
+                    self.assertTrue(os.path.islink(agents))
+                    with open(outside_file, "rb") as fh:
+                        self.assertEqual(fh.read(), original)
+
+    def test_generator_failure_leaves_the_live_tree_unchanged(self):
+        """A failed staged install must not alter any live Claude files."""
+        with tempfile.TemporaryDirectory() as home:
+            claude = os.path.join(home, ".claude")
+
+            def snapshot():
+                directories = []
+                files = {}
+                for directory, subdirectories, filenames in os.walk(claude):
+                    subdirectories.sort()
+                    filenames.sort()
+                    directories.append(os.path.relpath(directory, claude))
+                    for filename in filenames:
+                        path = os.path.join(directory, filename)
+                        with open(path, "rb") as fh:
+                            files[os.path.relpath(path, claude)] = fh.read()
+                return directories, files
+
+            sentinels = {
+                "hooks/router/sentinel.py": b"router-before\x00",
+                "hooks/session_init.py": b"session-init-before",
+                "hooks/user_prompt_submit.py": b"user-prompt-before",
+                "hooks/pre_tool_use.py": b"pre-tool-before",
+                "hooks/post_tool_use.py": b"post-tool-before",
+                "schema/model-router.schema.json": b"schema-before",
+                "agents/research-notes.md": b"ordinary-agent-before",
+                "agents/.user-data/nested/keep.bin": b"hidden-nested-before",
+                "agents/routed-haiku.md": b"---\nname: routed-haiku\n---\n\nhandwritten\n",
+                "agents/routed-fable-high.md": variants.agent_markdown(
+                    "routed-fable-high", "fable", "high", ("extreme",)
+                ).encode("utf-8"),
+            }
+            for relative, contents in sentinels.items():
+                path = os.path.join(claude, relative)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as fh:
+                    fh.write(contents)
+
+            before = snapshot()
+            env = dict(os.environ)
+            env["HOME"] = home
+            proc = subprocess.run(
+                ["bash", MANUAL_INSTALLER],
+                capture_output=True, text=True, env=env,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("CONFLICT", proc.stdout)
+            self.assertNotIn("Then restart Claude Code.", proc.stdout)
+            self.assertEqual(snapshot(), before)
 
     def test_failed_install_does_not_reinstate_a_rejected_tier(self):
         """The old fallback copied the DEFAULTS set, reintroducing sonnet."""
@@ -879,6 +1220,34 @@ class TestMinGatedTarget(unittest.TestCase):
             extreme={"model": "fable", "effort": "high"},
         )
         self.assertEqual(min_gated_target(cfg), ("opus", "xhigh"))
+
+    def test_walk_prefers_lower_effort_on_the_same_tier(self):
+        cfg = _cfg(
+            implementation={"model": "haiku"},
+            debugging={"model": "opus", "effort": "max"},
+            architecture={"model": "opus", "effort": "low"},
+            extreme={"model": "fable", "effort": "max"},
+        )
+        self.assertEqual(min_gated_target(cfg), ("opus", "low"))
+
+    def test_missing_effort_loses_to_a_ranked_target_without_raising(self):
+        cfg = {
+            "classes": {
+                "implementation": {"target": {"model": "haiku"}},
+                "debugging": {"target": {"model": "opus"}},
+                "architecture": {"target": {"model": "opus", "effort": "max"}},
+            },
+        }
+        self.assertEqual(min_gated_target(cfg), ("opus", "max"))
+
+    def test_only_missing_effort_target_does_not_raise(self):
+        cfg = {
+            "classes": {
+                "implementation": {"target": {"model": "haiku"}},
+                "debugging": {"target": {"model": "opus"}},
+            },
+        }
+        self.assertEqual(min_gated_target(cfg), ("opus", None))
 
     def test_all_haiku_config_has_nothing_to_escalate_to(self):
         cfg = _cfg(
@@ -1240,6 +1609,16 @@ class TestInstalledMeansUsable(unittest.TestCase):
             agents = self._agents(tmp)
             target = os.path.join(tmp, "somedir")
             os.makedirs(target)
+            os.symlink(target, os.path.join(agents, "routed-haiku.md"))
+            self.assertFalse(variants.is_installed(agents, "routed-haiku"))
+
+    def test_symlink_to_a_generated_file_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = self._agents(tmp)
+            target = os.path.join(tmp, "generated.md")
+            with open(target, "w") as fh:
+                fh.write(variants.agent_markdown(
+                    "routed-haiku", "haiku", None, ("mechanical",)))
             os.symlink(target, os.path.join(agents, "routed-haiku.md"))
             self.assertFalse(variants.is_installed(agents, "routed-haiku"))
 
